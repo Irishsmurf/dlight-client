@@ -5,3 +5,8 @@
 *.pyd
 *.db
 *.sqlite
+*.egg-info/
+dist/
+build/
+*.egg
+*.log
