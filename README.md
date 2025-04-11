@@ -1,6 +1,9 @@
 # python-dlight-client - Python Client for dLight API
 
-[![PyPI version](https://badge.fury.io/py/dlight-client.svg)](https://badge.fury.io/py/dlight-client) [![Python Versions](https://img.shields.io/pypi/pyversions/dlight-client.svg)](https://pypi.org/project/dlight-client/) This Python package provides a client library for interacting with the dLight smart lamp API, based on the documentation dated 2023-01-04. It allows controlling dLight devices over a local Wi-Fi network using TCP commands and discovering devices using UDP broadcasts.
+- [![PyPI version](https://badge.fury.io/py/dlight-client.svg)](https://badge.fury.io/py/dlight-client) 
+- [![Python Versions](https://img.shields.io/pypi/pyversions/dlight-client.svg)](https://pypi.org/project/dlight-client/) 
+
+This Python package provides a client library for interacting with the dLight smart lamp API, based on the documentation dated 2023-01-04. It allows controlling dLight devices over a local Wi-Fi network using TCP commands and discovering devices using UDP broadcasts.
 
 
 ## Features
@@ -143,4 +146,10 @@ python -m venv .venv
 source .venv/bin/activate  # or .\.venv\Scripts\activate on Windows
 pip install -r requirements-dev.txt # If you create one for build, twine, pytest etc.
 pip install -e . # Install package in editable mode
+```
+
+## Testing
+
+```sh
+python -m unittest discover tests/
 ```
