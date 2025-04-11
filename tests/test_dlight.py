@@ -31,7 +31,7 @@ except ImportError as e:
     print(f"Could not import DLightClient. Make sure dlightclient/dlight.py is accessible from your project root.")
     print(f"Import Error: {e}")
     # Define dummy classes/variables if import fails to allow test structure definition
-    MODULE_PATH = 'your_module.dlight' # Adjust this path if structure differs significantly
+    MODULE_PATH = 'dlightclient.dlight' # Adjust this path if structure differs significantly
     class DLightError(Exception): pass
     class DLightConnectionError(DLightError): pass
     class DLightTimeoutError(DLightConnectionError): pass
