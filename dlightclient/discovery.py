@@ -2,22 +2,19 @@
 """Handles UDP discovery of dLight devices."""
 
 import asyncio
-import socket # Still needed for socket errors, constants
+import socket
 import json
 import binascii
 import logging
 from typing import List, Dict, Any, Optional, Tuple, Set
 
-# Import constants and exceptions from within the package
 from .constants import (
     DEFAULT_UDP_DISCOVERY_PORT,
     DEFAULT_UDP_RESPONSE_PORT,
     UDP_DISCOVERY_PAYLOAD_HEX,
     BROADCAST_ADDRESS,
-    _LOGGER, # Use the logger defined in constants or define one here
+    _LOGGER,
 )
-# Exceptions are not directly raised here but might be useful for context
-# from .exceptions import DLightError
 
 # Logger specific to discovery, inheriting from the base logger if needed
 _LOGGER = logging.getLogger(__name__)
