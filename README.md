@@ -1,28 +1,37 @@
-# python-dlight-client - Python Client for dLight API
+# python-dlight-client - Async Python Client for dLight API
 
-- [![PyPI version](https://badge.fury.io/py/dlight-client.svg)](https://badge.fury.io/py/dlight-client) 
-- [![Python Versions](https://img.shields.io/pypi/pyversions/dlight-client.svg)](https://pypi.org/project/dlight-client/) 
+[![PyPI version](https://badge.fury.io/py/dlight-client.svg)](https://badge.fury.io/py/dlight-client)
+[![Python Versions](https://img.shields.io/pypi/pyversions/dlight-client.svg)](https://pypi.org/project/dlight-client/)
 
-This Python package provides a client library for interacting with the dLight smart lamp API, based on the documentation dated 2023-01-04. It allows controlling dLight devices over a local Wi-Fi network using TCP commands and discovering devices using UDP broadcasts.
+This Python package provides an asynchronous client library (`asyncio`) for interacting with the dLight smart lamp API, based on the documentation dated 2023-01-04. It allows discovering dLight devices using UDP broadcasts and controlling them over a local Wi-Fi network using TCP commands.
 
+The library has been refactored for better organization:
+* `dlightclient.client`: Contains the `AsyncDLightClient` for TCP control.
+* `dlightclient.discovery`: Provides the `discover_devices` function for UDP discovery.
+* `dlightclient.exceptions`: Defines custom error types.
+* `dlightclient.constants`: Holds shared constants.
+* `dlightclient.cli`: Offers a basic command-line interface.
 
 ## Features
 
-* Discover dLight devices on the local network via UDP broadcast (`discover_devices`).
-* Control dLight state:
-    * Turn On/Off (`set_light_state`)
-    * Set Brightness (0-100%) (`set_brightness`)
-    * Set Color Temperature (2600K-6000K) (`set_color_temperature`)
-* Query current device state (`query_device_state`).
-* Query device information (`query_device_info`).
-* Support for direct Wi-Fi provisioning (`connect_to_wifi` - use with caution).
-* Handles the specific dLight TCP response format (4-byte length prefix + JSON payload).
-* Custom exceptions for error handling (e.g., `DLightError`, `DLightTimeoutError`).
+* **Asynchronous:** Built with `asyncio` for non-blocking network operations.
+* **Discover Devices:** Find dLight devices on the local network via UDP broadcast (`discover_devices`).
+* **Control Light State:**
+    * Turn On/Off (`AsyncDLightClient.set_light_state`)
+    * Set Brightness (0-100%) (`AsyncDLightClient.set_brightness`)
+    * Set Color Temperature (2600K-6000K) (`AsyncDLightClient.set_color_temperature`)
+* **Query Device:**
+    * Get current state (`AsyncDLightClient.query_device_state`).
+    * Get device information (`AsyncDLightClient.query_device_info`).
+* **Wi-Fi Provisioning:** Support for sending Wi-Fi credentials (`AsyncDLightClient.connect_to_wifi` - typically used when device is in SoftAP mode).
+* **Robust Communication:** Handles the specific dLight TCP response format (4-byte length prefix + JSON payload) and includes timeouts.
+* **Error Handling:** Custom exceptions for specific error conditions (e.g., `DLightError`, `DLightTimeoutError`, `DLightConnectionError`).
+* **Command-Line Tool:** A basic CLI (`cli.py`) for discovery and interaction.
 
 ## Prerequisites
 
-* A dLight device connected to your local Wi-Fi network.
-* Python 3.7+
+* A dLight device connected to your local Wi-Fi network (or in SoftAP mode for initial setup).
+* Python 3.9+ (due to `asyncio` features used)
 
 ## Installation
 
@@ -31,24 +40,33 @@ pip install dlight-client
 ```
 
 ## Usage
-First, discover your dLight device(s) to get their IP address and Device ID. Then, use these details to send commands via a DLightClient instance.
+
+You can use this package as a library in your Python projects or via the included command-line tool.As a LibraryFirst, discover your dLight device(s) to get their IP address and Device ID. Then, use these details to send commands via an AsyncDLightClient instance within an async function.import asyncio
 
 ```py
-import time
 import logging
-from dlightclient.dlight import DLightClient, DLightError # Adjust import if needed
+import time # For delays in example
 
-logging.basicConfig(level=logging.INFO)
+# Import the public interface
+from dlightclient import (
+    AsyncDLightClient,
+    discover_devices,
+    DLightError,
+    DLightTimeoutError,
+    DLightConnectionError
+)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 log = logging.getLogger(__name__)
 
-def main():
-    log.info("--- dLight Python Client Example ---")
-    client = DLightClient()
+async def run_example():
+    log.info("--- Async dLight Python Client Example ---")
 
     log.info("\n--- Discovering Devices (3 seconds) ---")
     try:
-        # Use the static method for discovery
-        devices = DLightClient.discover_devices(discovery_duration=3.0)
+        # Use the discover_devices function directly
+        devices = await discover_devices(discovery_duration=3.0)
     except Exception as e:
          log.exception(f"Discovery failed with an unexpected error: {e}")
          devices = []
@@ -56,100 +74,134 @@ def main():
     if not devices:
         log.warning("\nNo dLight devices found on the network.")
         log.warning("Ensure dLight is powered on and connected to the same network.")
-        log.warning("If setting up for the first time, you might need to use")
-        log.warning("`client.connect_to_wifi(...)` while connected to its SoftAP.")
-        # Example placeholder for Wi-Fi connect (DO NOT RUN UNLESS NEEDED):
-        # try:
-        #     log.info("\nAttempting Wi-Fi connection (Example - REPLACE details)...")
-        #     # You need the device ID from the SoftAP SSID (e.g., GLAMP_<DEVICE_ID>)
-        #     wifi_resp = client.connect_to_wifi("YOUR_DEVICE_ID", "Your_WiFi_SSID", "Your_WiFi_Password")
-        #     log.info(f"Wi-Fi connect response: {wifi_resp}")
-        #     log.info("Wait for device to connect and try discovery again.")
-        # except DLightError as e:
-        #     log.error(f"Wi-Fi connect failed: {e}")
+        # Add Wi-Fi connect example if needed (see cli.py or client.py for details)
         return
 
     # --- Interact with the first discovered device ---
     target_device = devices[0]
-    target_ip = target_device['ip_address']
-    # Ensure key exists and handle potential case difference from discovery
+    target_ip = target_device.get('ip_address')
+    # Handle potential case difference for deviceId from discovery
     device_id = target_device.get('deviceId') or target_device.get('deviceid')
-    if not device_id:
-        log.error(f"Could not find 'deviceId' in discovered device info: {target_device}")
+
+    if not target_ip or not device_id:
+        log.error(f"Could not get IP address or Device ID from discovered device: {target_device}")
         return
 
     log.info(f"\n--- Interacting with: {device_id} at {target_ip} ---")
+    client = AsyncDLightClient(default_timeout=5.0) # Adjust timeout if needed
 
     try:
         # Query Info
         log.info("\nQuerying Device Info...")
-        info = client.query_device_info(target_ip, device_id)
+        info = await client.query_device_info(target_ip, device_id)
         log.info(f"  Info: {info}")
 
         # Query State
         log.info("\nQuerying Device State...")
-        state_resp = client.query_device_state(target_ip, device_id)
+        state_resp = await client.query_device_state(target_ip, device_id)
         current_state = state_resp.get('states', {})
         log.info(f"  Current State: {current_state}")
 
         # Turn On
         log.info("\nTurning Light ON...")
-        on_resp = client.set_light_state(target_ip, device_id, True)
-        log.info(f"  Response: {on_resp}")
-        time.sleep(0.5) # Give device time to react
+        await client.set_light_state(target_ip, device_id, True)
+        await asyncio.sleep(0.5) # Give device time to react
 
         # Set Brightness
         log.info("\nSetting Brightness to 60%...")
-        bright_resp = client.set_brightness(target_ip, device_id, 60)
-        log.info(f"  Response: {bright_resp}")
-        time.sleep(0.5)
+        await client.set_brightness(target_ip, device_id, 60)
+        await asyncio.sleep(0.5)
 
         # Set Color Temperature
         log.info("\nSetting Color Temperature to 4500K...")
-        temp_resp = client.set_color_temperature(target_ip, device_id, 4500)
-        log.info(f"  Response: {temp_resp}")
-        time.sleep(0.5)
+        await client.set_color_temperature(target_ip, device_id, 4500)
+        await asyncio.sleep(0.5)
 
         # Query State Again
         log.info("\nQuerying Device State Again...")
-        state_resp = client.query_device_state(target_ip, device_id)
-        current_state = state_resp.get('states', {})
-        log.info(f"  New State: {current_state}")
+        state_resp = await client.query_device_state(target_ip, device_id)
+        new_state = state_resp.get('states', {})
+        log.info(f"  New State: {new_state}")
 
         # Turn Off
         log.info("\nTurning Light OFF...")
-        off_resp = client.set_light_state(target_ip, device_id, False)
-        log.info(f"  Response: {off_resp}")
+        await client.set_light_state(target_ip, device_id, False)
 
+    except (DLightTimeoutError, DLightConnectionError) as e:
+        log.error(f"\n--- Network Error during interaction ---")
+        log.error(e)
     except DLightError as e:
-        log.error(f"\n--- An error occurred during interaction ---")
+        log.error(f"\n--- A dLight error occurred during interaction ---")
         log.error(e)
     except ValueError as e:
-         log.error(f"\n--- Invalid value provided ---")
+         log.error(f"\n--- Invalid value provided during interaction ---")
          log.error(e)
     except Exception as e:
-         log.exception(f"\n--- An unexpected error occurred ---") # Log full traceback
+         log.exception(f"\n--- An unexpected error occurred during interaction ---")
+
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(run_example())
+    except KeyboardInterrupt:
+        print("Example stopped.")
 ```
 
-## API Details
+###  Using the Command-Line Tool (cli.py)
 
-- TCP Commands: Sent to device IP on port `3333`.
-- UDP Discovery: Broadcast sent to `255.255.255.255` (default) on port `9478`. Responses listened for on port `9487`.
+The package includes a basic command-line tool for common operations. You can run it as a module:
 
-## Development and Testing
+```py
+python -m dlightclient.cli [OPTIONS]
+```
 
-```bash
+### Common Commands:
+
+- **Discover devices:**
+    - `python -m dlightclient.cli --discover`
+    - `python -m dlightclient.cli --discover --discover-duration <DURATION>`
+- **Interact with a device (requires IP and ID):** 
+    - *Replace <IP_ADDRESS> and <DEVICE_ID> with actual values*
+    - `python -m dlightclient.cli --ip <IP_ADDRESS> --id <DEVICE_ID>`
+- **Send Wi-Fi credentials (for setup):**
+    - *Warning: Use this only when the device is in SoftAP mode and your computer is connected to its network.*
+    - ```
+        # Replace <DEVICE_ID>, <YOUR_WIFI_SSID>, <YOUR_WIFI_PASSWORD>
+    	python -m dlightclient.cli --connect-wifi --id <DEVICE_ID> --ssid "<YOUR_WIFI_SSID>" --password "<YOUR_WIFI_PASSWORD>"
+      ```
+- **Get Help:**
+    - python -m dlightclient.cli --help
+- **Increase Verbosity:**
+    - Use -v for INFO level logging, -vv for DEBUG level.# Discover with DEBUG logging
+    - `python -m dlightclient.cli --discover -vv`
+
+# Interact with DEBUG logging
+`python -m dlightclient.cli --ip <IP_ADDRESS> --id <DEVICE_ID> -vv`
+
+# API Details
+- **TCP Commands:** Sent to device IP on port 3333 (default).  Handled by `AsyncDLightClient.`
+- **UDP Discovery:** Broadcast sent to 255.255.255.255 (default) on port 9478. Responses listened for on port 9487. Handled by `discover_devices`.
+
+# Development and Testing
+
+1. Setup Virtual Environment:
+```sh
 python -m venv .venv
 source .venv/bin/activate  # or .\.venv\Scripts\activate on Windows
-pip install -r requirements-dev.txt # If you create one for build, twine, pytest etc.
-pip install -e . # Install package in editable mode
 ```
 
-## Testing
-
+2. Install Dependencies (if any beyond standard library):
 ```sh
-python -m unittest discover tests/
+# Add requirements-dev.txt if needed for linters, pytest, etc.
+# pip install -r requirements-dev.txt
 ```
+
+3. Install in Editable Mode:
+```sh
+pip install -e .
+```
+
+# Testing
+Note: The test suite (tests/test_dlight.py) needs to be updated to reflect the refactored code structure (module paths for patching, imports, etc.).Once updated, you can run tests using:python -m unittest discover -s tests/ -p 'test_*.py'
+# Or potentially targeting the specific test file if structure changed:
+# python -m unittest tests.test_dlight
