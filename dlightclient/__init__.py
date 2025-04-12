@@ -1,4 +1,53 @@
 # dlightclient/__init__.py
-from .dlight import AsyncDLightClient, DLightError, DLightConnectionError, DLightTimeoutError, DLightCommandError, DLightResponseError
+"""
+dlight-client
 
-__version__ = "1.0.1" # Define package version here
+A Python library for discovering and controlling dLight smart lamps locally.
+"""
+
+# Define package version
+__version__ = "1.1.0" # Increment version after refactor
+
+# Import key components to make them available at the package level
+from .constants import (
+    DEFAULT_TCP_PORT,
+    DEFAULT_UDP_DISCOVERY_PORT,
+    DEFAULT_UDP_RESPONSE_PORT,
+    FACTORY_RESET_IP,
+    DEFAULT_TIMEOUT,
+    BROADCAST_ADDRESS,
+    UDP_DISCOVERY_PAYLOAD_HEX,
+)
+from .exceptions import (
+    DLightError,
+    DLightConnectionError,
+    DLightTimeoutError,
+    DLightCommandError,
+    DLightResponseError,
+)
+from .discovery import discover_devices
+from .client import AsyncDLightClient
+
+# Define what gets imported with 'from dlightclient import *'
+# (Generally discouraged, but good practice to define)
+__all__ = [
+    # Client
+    'AsyncDLightClient',
+    # Discovery
+    'discover_devices',
+    # Exceptions
+    'DLightError',
+    'DLightConnectionError',
+    'DLightTimeoutError',
+    'DLightCommandError',
+    'DLightResponseError',
+    # Key Constants
+    'DEFAULT_TCP_PORT',
+    'DEFAULT_UDP_DISCOVERY_PORT',
+    'DEFAULT_UDP_RESPONSE_PORT',
+    'FACTORY_RESET_IP',
+    'DEFAULT_TIMEOUT',
+    # Version
+    '__version__',
+]
+
