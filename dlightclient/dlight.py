@@ -1,11 +1,12 @@
-import socket
+import asyncio
+import socket # Still needed for socket errors, constants
 import json
-import time
 import struct
+import time
 import uuid
-import select
 import binascii
-from typing import List, Dict, Any, Optional, Tuple, Union
+import logging
+from typing import List, Dict, Any, Optional, Tuple, Union, Set
 
 # --- Constants ---
 DEFAULT_TCP_PORT = 3333
@@ -13,11 +14,13 @@ DEFAULT_UDP_DISCOVERY_PORT = 9478
 DEFAULT_UDP_RESPONSE_PORT = 9487
 UDP_DISCOVERY_PAYLOAD_HEX = "476f6f676c654e50455f457269635f5761796e65"
 DEFAULT_TIMEOUT = 5.0  # seconds
-BROADCAST_ADDRESS = "255.255.255.255"
+BROADCAST_ADDRESS = "255.255.255.255" # Use specific broadcast if known, else default
 FACTORY_RESET_IP = "192.168.4.1"
 MAX_PAYLOAD_SIZE = 10 * 1024 # 10 KB sanity limit
 
-# --- Custom Exceptions ---
+_LOGGER = logging.getLogger(__name__)
+
+# --- Custom Exceptions (can remain the same) ---
 class DLightError(Exception):
     """Base exception for dlightclient errors."""
     pass
@@ -39,19 +42,19 @@ class DLightResponseError(DLightError):
     pass
 
 
-class DLightClient:
+class AsyncDLightClient:
     """
-    A client for interacting with dLight devices over the local network.
+    An asynchronous client for interacting with dLight devices using asyncio.
 
-    Provides methods for discovering devices, querying status, and controlling
-    the light's state (on/off, brightness, color temperature).
+    Provides async methods for discovering devices, querying status, and
+    controlling the light's state (on/off, brightness, color temperature).
 
     Remember the confidential nature of the dLight API as per original docs.
     """
 
     def __init__(self, default_timeout: float = DEFAULT_TIMEOUT):
         """
-        Initializes the DLightClient.
+        Initializes the AsyncDLightClient.
 
         Args:
             default_timeout: Default network operation timeout in seconds.
@@ -59,15 +62,14 @@ class DLightClient:
         self.default_timeout = default_timeout
 
     def _generate_command_id(self) -> str:
-        """Generates a unique command ID."""
-        # Using timestamp + part of uuid for simplicity and uniqueness likelihood
+        """Generates a unique command ID (remains synchronous)."""
         return f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
 
-    def _send_tcp_command(self, target_ip: str, command: Dict[str, Any]) -> Dict[str, Any]:
+    async def _async_send_tcp_command(self, target_ip: str, command: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Sends a command via TCP and receives the response.
+        Sends a command via TCP using asyncio streams and receives the response.
 
-        Handles the 4-byte length prefix header in the response.
+        Handles the 4-byte length prefix header in the response asynchronously.
 
         Args:
             target_ip: The IP address of the dLight device.
@@ -78,36 +80,39 @@ class DLightClient:
 
         Raises:
             DLightTimeoutError: If the connection or read/write times out.
-            DLightConnectionError: If any other socket error occurs.
+            DLightConnectionError: If any other connection/socket error occurs.
             DLightCommandError: If the command cannot be serialized.
             DLightResponseError: If the response header/payload is invalid,
                                  or the device returns a non-SUCCESS status.
         """
-        sock = None
+        reader = None
+        writer = None
         try:
-            # Create and connect the socket
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(self.default_timeout)
-            sock.connect((target_ip, DEFAULT_TCP_PORT))
-
-            # Serialize command to JSON bytes
+            # Serialize command to JSON bytes (synchronous part)
             try:
                 json_data = json.dumps(command).encode('utf-8')
             except TypeError as e:
                 raise DLightCommandError(f"Failed to serialize command to JSON: {e}") from e
 
-            # Send the command
-            sock.sendall(json_data)
+            # Open connection with timeout
+            async with asyncio.timeout(self.default_timeout):
+                _LOGGER.debug("Opening connection to %s:%d", target_ip, DEFAULT_TCP_PORT)
+                reader, writer = await asyncio.open_connection(target_ip, DEFAULT_TCP_PORT)
 
-            # --- Read the response ---
-            # 1. Read the 4-byte header (payload length)
-            header = sock.recv(4)
-            if len(header) < 4:
-                raise DLightResponseError(f"Incomplete header received (got {len(header)} bytes, expected 4)")
+                # Send the command
+                _LOGGER.debug("Sending command: %s", json_data)
+                writer.write(json_data)
+                await writer.drain()
 
-            # 2. Decode the header (Big Endian unsigned integer)
+                # --- Read the response ---
+                # 1. Read the 4-byte header (payload length)
+                _LOGGER.debug("Reading header (4 bytes)")
+                header = await reader.readexactly(4)
+
+            # Decode the header (Big Endian unsigned integer) - synchronous
             try:
                 payload_length = struct.unpack('>I', header)[0]
+                _LOGGER.debug("Received header, payload length: %d", payload_length)
             except struct.error as e:
                  raise DLightResponseError(f"Failed to unpack header bytes: {e}") from e
 
@@ -116,76 +121,63 @@ class DLightClient:
             if payload_length > MAX_PAYLOAD_SIZE:
                  raise DLightResponseError(f"Payload length {payload_length} exceeds maximum limit {MAX_PAYLOAD_SIZE}")
 
-            # 3. Read the JSON payload
-            payload_bytes = b""
-            bytes_remaining = payload_length
-            while bytes_remaining > 0:
-                chunk = sock.recv(min(bytes_remaining, 4096)) # Read in chunks
-                if not chunk:
-                    raise DLightResponseError(f"Connection closed while reading payload (read {len(payload_bytes)}/{payload_length} bytes)")
-                payload_bytes += chunk
-                bytes_remaining -= len(chunk)
+            # Read the JSON payload with timeout
+            async with asyncio.timeout(self.default_timeout):
+                _LOGGER.debug("Reading payload (%d bytes)", payload_length)
+                payload_bytes = await reader.readexactly(payload_length)
 
-            # 4. Deserialize the JSON payload
+            # Deserialize the JSON payload - synchronous
             try:
                 response = json.loads(payload_bytes.decode('utf-8'))
+                _LOGGER.debug("Received response: %s", response)
             except json.JSONDecodeError as e:
                 raise DLightResponseError(f"Failed to decode JSON payload: {e}\nRaw Payload: {payload_bytes!r}") from e
             except UnicodeDecodeError as e:
                  raise DLightResponseError(f"Failed to decode payload as UTF-8: {e}\nRaw Payload: {payload_bytes!r}") from e
 
-            # 5. Check status
+            # Check status - synchronous
             status = response.get("status")
             if status != "SUCCESS":
                 raise DLightResponseError(f"dLight returned non-SUCCESS status: '{status}'. Full response: {response}")
 
             return response
 
-        except socket.timeout:
-            raise DLightTimeoutError(f"Timeout connecting to or communicating with {target_ip}:{DEFAULT_TCP_PORT}") from None
-        except socket.error as e:
-            raise DLightConnectionError(f"Socket error communicating with {target_ip}:{DEFAULT_TCP_PORT}: {e}") from e
+        except asyncio.TimeoutError:
+            raise DLightTimeoutError(f"Timeout communicating with {target_ip}:{DEFAULT_TCP_PORT}") from None
+        except ConnectionRefusedError as e:
+             raise DLightConnectionError(f"Connection refused by {target_ip}:{DEFAULT_TCP_PORT}") from e
+        except OSError as e: # Catch other potential socket/network errors
+            raise DLightConnectionError(f"Network error communicating with {target_ip}:{DEFAULT_TCP_PORT}: {e}") from e
+        except asyncio.IncompleteReadError as e:
+             raise DLightResponseError(f"Connection closed unexpectedly while reading. Expected {e.expected} bytes, got {len(e.partial)}.") from e
+        except Exception as e:
+             # Catch any other unexpected errors during the process
+             _LOGGER.exception("Unexpected error during TCP command")
+             raise DLightError(f"An unexpected error occurred: {e}") from e
         finally:
-            if sock:
-                sock.close()
+            if writer:
+                try:
+                    writer.close()
+                    await writer.wait_closed()
+                    _LOGGER.debug("Connection closed")
+                except Exception:
+                    _LOGGER.debug("Error closing writer (may already be closed)")
 
-    # --- Public API Methods ---
 
-    def set_light_state(self, target_ip: str, device_id: str, on: bool) -> Dict[str, Any]:
-        """
-        Turns the dLight on or off.
+    # --- Public API Methods (Async) ---
 
-        Args:
-            target_ip: IP address of the dLight.
-            device_id: Unique device ID of the dLight.
-            on: True to turn on, False to turn off.
-
-        Returns:
-            The response dictionary from the device.
-        """
+    async def set_light_state(self, target_ip: str, device_id: str, on: bool) -> Dict[str, Any]:
+        """Turns the dLight on or off (asynchronously)."""
         command = {
             "commandId": self._generate_command_id(),
             "deviceId": device_id,
             "commandType": "EXECUTE",
-            "commands": [{"on": bool(on)}] # Ensure it's a proper boolean
+            "commands": [{"on": bool(on)}]
         }
-        return self._send_tcp_command(target_ip, command)
+        return await self._async_send_tcp_command(target_ip, command)
 
-    def set_brightness(self, target_ip: str, device_id: str, brightness: int) -> Dict[str, Any]:
-        """
-        Sets the brightness of the dLight.
-
-        Args:
-            target_ip: IP address of the dLight.
-            device_id: Unique device ID of the dLight.
-            brightness: Brightness percentage (0-100). 0 turns the light off.
-
-        Returns:
-            The response dictionary from the device.
-
-        Raises:
-            ValueError: If brightness is outside the 0-100 range.
-        """
+    async def set_brightness(self, target_ip: str, device_id: str, brightness: int) -> Dict[str, Any]:
+        """Sets the brightness of the dLight (asynchronously)."""
         if not 0 <= brightness <= 100:
             raise ValueError("Brightness must be between 0 and 100")
         command = {
@@ -194,23 +186,10 @@ class DLightClient:
             "commandType": "EXECUTE",
             "commands": [{"brightness": int(brightness)}]
         }
-        return self._send_tcp_command(target_ip, command)
+        return await self._async_send_tcp_command(target_ip, command)
 
-    def set_color_temperature(self, target_ip: str, device_id: str, temperature: int) -> Dict[str, Any]:
-        """
-        Sets the color temperature of the dLight.
-
-        Args:
-            target_ip: IP address of the dLight.
-            device_id: Unique device ID of the dLight.
-            temperature: Color temperature in Kelvin (2600-6000).
-
-        Returns:
-            The response dictionary from the device.
-
-        Raises:
-            ValueError: If temperature is outside the 2600-6000 range.
-        """
+    async def set_color_temperature(self, target_ip: str, device_id: str, temperature: int) -> Dict[str, Any]:
+        """Sets the color temperature of the dLight (asynchronously)."""
         if not 2600 <= temperature <= 6000:
             raise ValueError("Color temperature must be between 2600 and 6000 Kelvin")
         command = {
@@ -219,84 +198,92 @@ class DLightClient:
             "commandType": "EXECUTE",
             "commands": [{"color": {"temperature": int(temperature)}}]
         }
-        return self._send_tcp_command(target_ip, command)
+        return await self._async_send_tcp_command(target_ip, command)
 
-    def query_device_state(self, target_ip: str, device_id: str) -> Dict[str, Any]:
-        """
-        Queries the current state (on/off, brightness, color) of the dLight.
-
-        Args:
-            target_ip: IP address of the dLight.
-            device_id: Unique device ID of the dLight.
-
-        Returns:
-            The response dictionary containing the device state under the 'states' key.
-        """
+    async def query_device_state(self, target_ip: str, device_id: str) -> Dict[str, Any]:
+        """Queries the current state of the dLight (asynchronously)."""
         command = {
             "commandId": self._generate_command_id(),
             "deviceId": device_id,
             "commandType": "QUERY_DEVICE_STATES",
-            "commands": [] # Empty for query
+            "commands": []
         }
-        return self._send_tcp_command(target_ip, command)
+        return await self._async_send_tcp_command(target_ip, command)
 
-    def query_device_info(self, target_ip: str, device_id: str) -> Dict[str, Any]:
-        """
-        Queries the device information (versions, model) of the dLight.
-
-        Args:
-            target_ip: IP address of the dLight.
-            device_id: Unique device ID of the dLight.
-
-        Returns:
-            The response dictionary containing the device info.
-        """
+    async def query_device_info(self, target_ip: str, device_id: str) -> Dict[str, Any]:
+        """Queries the device information of the dLight (asynchronously)."""
         command = {
             "commandId": self._generate_command_id(),
             "deviceId": device_id,
             "commandType": "QUERY_DEVICE_INFO",
-            "commands": [] # Empty for query
+            "commands": []
         }
-        return self._send_tcp_command(target_ip, command)
+        return await self._async_send_tcp_command(target_ip, command)
 
-    def connect_to_wifi(self, device_id: str, ssid: str, password: str) -> Dict[str, Any]:
-        """
-        Sends the SSID_CONNECT command for direct Wi-Fi provisioning.
-
-        IMPORTANT: This should only be sent to the dLight when it's in its
-        initial SoftAP mode (IP address 192.168.4.1). Sends credentials
-        in clear text. Use with caution.
-
-        Args:
-            device_id: Unique device ID of the dLight (often found in SoftAP SSID).
-            ssid: The SSID (name) of the Wi-Fi network to connect to.
-            password: The password for the Wi-Fi network.
-
-        Returns:
-            The response dictionary from the device.
-        """
+    async def connect_to_wifi(self, device_id: str, ssid: str, password: str) -> Dict[str, Any]:
+        """Sends the SSID_CONNECT command for direct Wi-Fi provisioning (asynchronously)."""
         command = {
             "commandId": self._generate_command_id(),
             "deviceId": device_id,
-            "commandType": "SSID_CONNECT", # Matches example in docs
+            "commandType": "SSID_CONNECT",
             "ssid": ssid,
             "password": password
         }
-        # This command specifically targets the factory reset IP
         try:
-             return self._send_tcp_command(FACTORY_RESET_IP, command)
+             return await self._async_send_tcp_command(FACTORY_RESET_IP, command)
         except DLightError as e:
-             # Add context for this specific operation
              raise DLightCommandError(f"Failed to send SSID_CONNECT to {FACTORY_RESET_IP}: {e}") from e
+
+    # --- UDP Discovery (Async) ---
+
+    class _DiscoveryProtocol(asyncio.DatagramProtocol):
+        """Asyncio Protocol to handle incoming discovery responses."""
+        def __init__(self, discovered_devices_set: Set[str], results_list: List[Dict]):
+            self.transport = None
+            self.discovered_devices_set = discovered_devices_set
+            self.results_list = results_list
+            super().__init__()
+
+        def connection_made(self, transport: asyncio.DatagramTransport):
+            _LOGGER.debug("Discovery listener connection made (transport ready)")
+            self.transport = transport
+
+        def datagram_received(self, data: bytes, addr: Tuple[str, int]):
+            ip_address = addr[0]
+            _LOGGER.debug("Received %d bytes from %s", len(data), ip_address)
+
+            # Avoid processing duplicates immediately
+            if ip_address in self.discovered_devices_set:
+                _LOGGER.debug("Ignoring duplicate discovery response from %s", ip_address)
+                return
+
+            try:
+                device_info = json.loads(data.decode('utf-8'))
+                device_info['ip_address'] = ip_address
+                _LOGGER.info("Discovered dLight: %s", device_info)
+                self.discovered_devices_set.add(ip_address)
+                self.results_list.append(device_info)
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                _LOGGER.warning("Error decoding discovery response from %s: %s", ip_address, e)
+            except Exception as e:
+                 _LOGGER.exception("Unexpected error processing datagram from %s", ip_address)
+
+
+        def error_received(self, exc: Exception):
+            _LOGGER.error(f"Discovery listener error: {exc}")
+
+        def connection_lost(self, exc: Optional[Exception]):
+            _LOGGER.debug(f"Discovery listener connection lost: {exc}")
+            # Optionally handle cleanup or reconnection logic if needed
 
 
     @staticmethod
-    def discover_devices(discovery_duration: float = 3.0,
-                         response_port: int = DEFAULT_UDP_RESPONSE_PORT,
-                         discovery_port: int = DEFAULT_UDP_DISCOVERY_PORT,
-                         broadcast_address: str = BROADCAST_ADDRESS) -> List[Dict[str, Any]]:
+    async def discover_devices(discovery_duration: float = 3.0,
+                               response_port: int = DEFAULT_UDP_RESPONSE_PORT,
+                               discovery_port: int = DEFAULT_UDP_DISCOVERY_PORT,
+                               broadcast_address: str = BROADCAST_ADDRESS) -> List[Dict[str, Any]]:
         """
-        Discovers dLight devices on the network using UDP broadcast.
+        Discovers dLight devices on the network using asyncio UDP.
 
         Args:
             discovery_duration: How long to listen for responses (in seconds).
@@ -306,164 +293,135 @@ class DLightClient:
 
         Returns:
             A list of dictionaries, each representing a discovered device
-            including its 'ip_address'. Returns an empty list if none found.
+            including its 'ip_address'. Returns an empty list if none found or on error.
         """
-        discovered_devices = {} # Use dict to avoid duplicates based on IP
-        listen_sock = None
-        send_sock = None
+        loop = asyncio.get_running_loop()
+        discovered_devices_set = set()
+        results_list = []
+        transport = None
+        protocol = None
 
         try:
-            # Decode the hex payload
+            # Decode the hex payload (synchronous)
             try:
                 probe_payload = binascii.unhexlify(UDP_DISCOVERY_PAYLOAD_HEX)
             except binascii.Error as e:
-                 # This should not happen with a fixed hex string
-                 print(f"[Error] Failed to decode internal discovery payload: {e}")
+                 _LOGGER.error(f"Internal error: failed to decode UDP probe payload hex: {e}")
                  return []
 
-            # Setup listening socket
-            listen_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            listen_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                 # Bind to all interfaces on the specified response port
-                 listen_sock.bind(('', response_port))
-            except socket.error as e:
-                 print(f"[Error] Could not bind UDP listening socket to port {response_port}: {e}. Check if port is in use.")
-                 return []
-            listen_sock.setblocking(False) # Use select for non-blocking reads
+            # Create the listening endpoint
+            # Pass the shared set and list to the protocol instance
+            transport, protocol = await loop.create_datagram_endpoint(
+                lambda: AsyncDLightClient._DiscoveryProtocol(discovered_devices_set, results_list),
+                local_addr=('0.0.0.0', response_port),
+                allow_broadcast=False # Listener doesn't need broadcast
+            )
+            _LOGGER.debug(f"Listening for discovery responses on port {response_port}")
 
-            # Setup sending socket
-            send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            send_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            # Create a separate sending socket/transport for broadcast
+            # Using a separate one avoids potential issues with reusing the listener
+            send_transport, _ = await loop.create_datagram_endpoint(
+                lambda: asyncio.DatagramProtocol(), # Simple protocol for sending
+                remote_addr=(broadcast_address, discovery_port) # Set remote for easy sendto
+            )
+            # Enable broadcasting on the sending socket if possible (may require privileges)
+            sending_socket = send_transport.get_extra_info('socket')
+            if sending_socket:
+                 sending_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                 _LOGGER.debug("Broadcast enabled for sending socket")
+            else:
+                 _LOGGER.warning("Could not get underlying socket to enable broadcast.")
 
-            print(f"Broadcasting dLight discovery probe to {broadcast_address}:{discovery_port}...")
-            print(f"Listening for responses on port {response_port} for {discovery_duration} seconds...")
 
             # Send the broadcast probe
-            try:
-                send_sock.sendto(probe_payload, (broadcast_address, discovery_port))
-            except socket.error as e:
-                 print(f"[Error] Failed to send UDP broadcast: {e}. Check network permissions.")
-                 return [] # Cannot proceed without sending probe
+            _LOGGER.info(f"Sending discovery probe to {broadcast_address}:{discovery_port}")
+            send_transport.sendto(probe_payload) # No need for address if remote_addr was set
 
-            # Listen for responses using select
-            end_time = time.time() + discovery_duration
-            while time.time() < end_time:
-                # Calculate remaining time for select timeout
-                remaining_time = max(0, end_time - time.time())
-                readable, _, _ = select.select([listen_sock], [], [], remaining_time)
+            # Wait for responses
+            await asyncio.sleep(discovery_duration)
 
-                if not readable:
-                    continue # Timeout for this select call, continue loop if time remains
+            _LOGGER.info(f"Discovery finished. Found {len(results_list)} device(s).")
 
-                # Socket has data
-                try:
-                    data, addr = listen_sock.recvfrom(1024) # Buffer size
-                    ip_address = addr[0]
-
-                    if ip_address in discovered_devices:
-                        continue # Already found this one
-
-                    print(f"Received response from {ip_address}")
-                    try:
-                        device_info = json.loads(data.decode('utf-8'))
-                        device_info['ip_address'] = ip_address # Add IP to the info
-                        discovered_devices[ip_address] = device_info
-                        print(f"  -> Discovered: {device_info}")
-                    except (json.JSONDecodeError, UnicodeDecodeError) as e:
-                        print(f"  -> Error decoding response from {ip_address}: {e}")
-
-                except socket.error as e:
-                    # Errors during recvfrom might occur, log and continue
-                    print(f"[Warning] Socket error receiving UDP data: {e}")
-                    time.sleep(0.1) # Avoid busy-looping on error
-
+        except PermissionError as e:
+            _LOGGER.error(f"Permission denied for UDP broadcast or binding to port {response_port}. Try running with higher privileges if necessary. Error: {e}")
+            return []
+        except OSError as e:
+             _LOGGER.error(f"Network error during discovery (e.g., port {response_port} in use?): {e}")
+             return []
         except Exception as e:
-             # Catch broader exceptions during setup/loop
-             print(f"[Error] An unexpected error occurred during discovery: {e}")
+            _LOGGER.exception(f"An unexpected error occurred during async discovery: {e}")
+            return []
         finally:
-            if listen_sock:
-                listen_sock.close()
-            if send_sock:
-                send_sock.close()
+            if transport:
+                transport.close()
+                _LOGGER.debug("Discovery listener transport closed.")
+            if 'send_transport' in locals() and send_transport:
+                 send_transport.close()
+                 _LOGGER.debug("Discovery sender transport closed.")
 
-        print(f"Discovery finished. Found {len(discovered_devices)} device(s).")
-        return list(discovered_devices.values())
+        return results_list
 
 
-# --- Example Usage ---
-if __name__ == "__main__":
-    print("--- dLight Python Client Example ---")
-    client = DLightClient()
+# --- Example Usage (Async) ---
+async def main():
+    """Example of using the async client."""
+    logging.basicConfig(level=logging.DEBUG) # Enable debug logging for example
+    print("--- Async dLight Python Client Example ---")
+    client = AsyncDLightClient()
 
     print("\n--- Discovering Devices (3 seconds) ---")
     try:
-        devices = DLightClient.discover_devices(discovery_duration=3.0)
+        devices = await AsyncDLightClient.discover_devices(discovery_duration=3.0)
     except Exception as e:
          print(f"Discovery failed with an unexpected error: {e}")
          devices = []
 
     if not devices:
         print("\nNo dLight devices found on the network.")
-        print("Ensure dLight is powered on and connected to the same network.")
-        print("If setting up for the first time, you might need to use")
-        print("`client.connect_to_wifi(...)` while connected to its SoftAP.")
-        # Example placeholder for Wi-Fi connect (DO NOT RUN UNLESS NEEDED):
+        # Add connect_to_wifi example if needed, remembering it's async now
+        # print("Attempting Wi-Fi connection (Example - REPLACE details)...")
         # try:
-        #     print("\nAttempting Wi-Fi connection (Example - REPLACE details)...")
-        #     # You need the device ID from the SoftAP SSID (e.g., GLAMP_<DEVICE_ID>)
-        #     wifi_resp = client.connect_to_wifi("YOUR_DEVICE_ID", "Your_WiFi_SSID", "Your_WiFi_Password")
+        #     wifi_resp = await client.connect_to_wifi("YOUR_DEVICE_ID", "Your_WiFi_SSID", "Your_WiFi_Password")
         #     print(f"Wi-Fi connect response: {wifi_resp}")
-        #     print("Wait for device to connect and try discovery again.")
         # except DLightError as e:
         #     print(f"Wi-Fi connect failed: {e}")
     else:
-        # --- Interact with the first discovered device ---
         target_device = devices[0]
         target_ip = target_device['ip_address']
-        device_id = target_device['deviceId'] # Case sensitive based on discovery response
-        print(f"\n--- Interacting with: {device_id} at {target_ip} ---")
+        device_id = target_device.get('deviceId') or target_device.get('deviceid')
 
+        if not device_id:
+             print(f"Error: Could not get deviceId from discovery: {target_device}")
+             return
+
+        print(f"\n--- Interacting with: {device_id} at {target_ip} ---")
         try:
-            # Query Info
             print("\nQuerying Device Info...")
-            info = client.query_device_info(target_ip, device_id)
+            info = await client.query_device_info(target_ip, device_id)
             print(f"  Info: {info}")
 
-            # Query State
             print("\nQuerying Device State...")
-            state_resp = client.query_device_state(target_ip, device_id)
-            current_state = state_resp.get('states', {})
-            print(f"  Current State: {current_state}")
+            state_resp = await client.query_device_state(target_ip, device_id)
+            print(f"  Current State: {state_resp.get('states')}")
 
-            # Turn On
             print("\nTurning Light ON...")
-            on_resp = client.set_light_state(target_ip, device_id, True)
-            print(f"  Response: {on_resp}")
-            time.sleep(0.5) # Give device time to react
+            await client.set_light_state(target_ip, device_id, True)
+            await asyncio.sleep(0.5)
 
-            # Set Brightness
-            print("\nSetting Brightness to 60%...")
-            bright_resp = client.set_brightness(target_ip, device_id, 60)
-            print(f"  Response: {bright_resp}")
-            time.sleep(0.5)
+            print("\nSetting Brightness to 30%...")
+            await client.set_brightness(target_ip, device_id, 30)
+            await asyncio.sleep(0.5)
 
-            # Set Color Temperature
-            print("\nSetting Color Temperature to 4500K...")
-            temp_resp = client.set_color_temperature(target_ip, device_id, 4500)
-            print(f"  Response: {temp_resp}")
-            time.sleep(0.5)
+            print("\nSetting Color Temperature to 5000K...")
+            await client.set_color_temperature(target_ip, device_id, 5000)
+            await asyncio.sleep(0.5)
 
-            # Query State Again
             print("\nQuerying Device State Again...")
-            state_resp = client.query_device_state(target_ip, device_id)
-            current_state = state_resp.get('states', {})
-            print(f"  New State: {current_state}")
+            state_resp = await client.query_device_state(target_ip, device_id)
+            print(f"  New State: {state_resp.get('states')}")
 
-            # Turn Off
             print("\nTurning Light OFF...")
-            off_resp = client.set_light_state(target_ip, device_id, False)
-            print(f"  Response: {off_resp}")
+            await client.set_light_state(target_ip, device_id, False)
 
         except DLightError as e:
             print(f"\n--- An error occurred during interaction ---")
@@ -471,5 +429,12 @@ if __name__ == "__main__":
         except ValueError as e:
              print(f"\n--- Invalid value provided ---")
              print(e)
+        except Exception as e:
+             _LOGGER.exception("Unexpected error during interaction example")
 
-    print("\n--- Example Finished ---")
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Example stopped.")
