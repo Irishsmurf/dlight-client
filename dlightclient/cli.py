@@ -4,12 +4,11 @@
 import asyncio
 import logging
 import argparse
-import time # For sleep in example sequence
+import time
 
-# Import the public interface from the package's __init__
 from . import (
     AsyncDLightClient,
-    DLightDevice, # <-- Import DLightDevice
+    DLightDevice,
     discover_devices,
     DLightError,
     DLightTimeoutError,
@@ -17,7 +16,6 @@ from . import (
     DLightResponseError,
     DLightCommandError,
 )
-# Import constants if needed directly (e.g., for FACTORY_RESET_IP in wifi connect)
 from . import constants
 
 # Configure logging for the example script
@@ -25,7 +23,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-log = logging.getLogger(__name__) # Use __name__ for the script's logger
+log = logging.getLogger(__name__)
 
 
 async def run_discovery(duration: float):
@@ -41,11 +39,11 @@ async def run_discovery(duration: float):
             log.info(f"\n--- Discovered {len(devices_info)} Device(s) ---")
             for i, device_info in enumerate(devices_info):
                 ip = device_info.get('ip_address', 'N/A')
-                dev_id = device_info.get('deviceId', device_info.get('deviceid', 'N/A')) # Handle case variations
+                dev_id = device_info.get('deviceId', device_info.get('deviceid', 'N/A'))
                 model = device_info.get('deviceModel', 'N/A')
                 print(f"  Device {i+1}: ID={dev_id}, IP={ip}, Model={model}")
                 log.debug(f"  Full info Device {i+1}: {device_info}")
-        return devices_info # Return the list of dicts
+        return devices_info
     except Exception as e:
          log.exception(f"Discovery failed with an unexpected error: {e}")
          return []
@@ -63,13 +61,13 @@ async def run_interaction(client: AsyncDLightClient, target_ip: str, device_id: 
 
     try:
         print("\nQuerying Device Info...")
-        info = await device.get_info() # Use device method
+        info = await device.get_info()
         print(f"  Info Response: {info}")
         # Info might be directly in the response payload, not nested
         log.info(f"  Device Info: Model={info.get('deviceModel')}, SW={info.get('swVersion')}, HW={info.get('hwVersion')}")
 
         print("\nQuerying Device State...")
-        current_state = await device.get_state() # Use device method
+        current_state = await device.get_state()
         print(f"  State Response: {current_state}") # Already extracted 'states' dict
         log.info(f"  Current State: {current_state}")
 
@@ -199,7 +197,6 @@ async def main():
         lib_logger.setLevel(logging.WARNING) # Default library level if not verbose
 
 
-    # --- Execute requested action ---
     client = AsyncDLightClient(default_timeout=args.timeout)
     discovered_devices_info = [] # Store discovery results if needed
 
@@ -242,6 +239,3 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\nOperation cancelled by user.")
-    # Catching general Exception here can hide specific issues handled in main()
-    # Consider letting main handle its specific errors unless there's setup/teardown needed here.
-
