@@ -387,7 +387,7 @@ class AsyncDLightClient:
             # Create the listening endpoint - REMOVED await
             # create_datagram_endpoint needs to be run in the loop executor if called from a different thread,
             # but here it's called directly within the async function's running loop.
-            transport, protocol = loop.create_datagram_endpoint(
+            transport, _ = await loop.create_datagram_endpoint(
                 lambda: AsyncDLightClient._DiscoveryProtocol(discovered_devices_set, results_list),
                 local_addr=('0.0.0.0', response_port),
                 allow_broadcast=False
@@ -395,7 +395,7 @@ class AsyncDLightClient:
             _LOGGER.debug(f"Listening for discovery responses on port {response_port}")
 
             # Create a separate sending socket/transport for broadcast - REMOVED await
-            send_transport, _ = loop.create_datagram_endpoint(
+            send_transport, _ = await loop.create_datagram_endpoint(
                 lambda: asyncio.DatagramProtocol(),
                 remote_addr=(broadcast_address, discovery_port),
                 allow_broadcast=True # Request broadcast permission here if possible
