@@ -9,6 +9,7 @@ import time # For sleep in example sequence
 # Import the public interface from the package's __init__
 from . import (
     AsyncDLightClient,
+    DLightDevice, # <-- Import DLightDevice
     discover_devices,
     DLightError,
     DLightTimeoutError,
@@ -16,6 +17,8 @@ from . import (
     DLightResponseError,
     DLightCommandError,
 )
+# Import constants if needed directly (e.g., for FACTORY_RESET_IP in wifi connect)
+from . import constants
 
 # Configure logging for the example script
 logging.basicConfig(
@@ -29,83 +32,98 @@ async def run_discovery(duration: float):
     """Runs the discovery process and prints results."""
     log.info(f"\n--- Discovering Devices ({duration} seconds) ---")
     try:
-        devices = await discover_devices(discovery_duration=duration)
-        if not devices:
+        devices_info = await discover_devices(discovery_duration=duration)
+        if not devices_info:
             log.warning("\nNo dLight devices found on the network.")
             log.warning("Ensure dLight is powered on and connected to the same network.")
             log.warning("Firewall rules might also block UDP broadcast/responses.")
         else:
-            log.info(f"\n--- Discovered {len(devices)} Device(s) ---")
-            for i, device in enumerate(devices):
-                ip = device.get('ip_address', 'N/A')
-                dev_id = device.get('deviceId', device.get('deviceid', 'N/A')) # Handle case variations
-                model = device.get('deviceModel', 'N/A')
+            log.info(f"\n--- Discovered {len(devices_info)} Device(s) ---")
+            for i, device_info in enumerate(devices_info):
+                ip = device_info.get('ip_address', 'N/A')
+                dev_id = device_info.get('deviceId', device_info.get('deviceid', 'N/A')) # Handle case variations
+                model = device_info.get('deviceModel', 'N/A')
                 print(f"  Device {i+1}: ID={dev_id}, IP={ip}, Model={model}")
-                log.debug(f"  Full info Device {i+1}: {device}")
-        return devices
+                log.debug(f"  Full info Device {i+1}: {device_info}")
+        return devices_info # Return the list of dicts
     except Exception as e:
          log.exception(f"Discovery failed with an unexpected error: {e}")
          return []
 
 
 async def run_interaction(client: AsyncDLightClient, target_ip: str, device_id: str):
-    """Runs a sequence of interactions with a specific device."""
-    log.info(f"\n--- Interacting with: {device_id} at {target_ip} ---")
+    """
+    Runs a sequence of interactions with a specific device using DLightDevice.
+    """
+    log.info(f"\n--- Interacting with: {device_id} at {target_ip} using DLightDevice ---")
+
+    # Create a DLightDevice instance
+    device = DLightDevice(ip_address=target_ip, device_id=device_id, client=client)
+    print(f"Created device object: {device}") # Uses __str__
+
     try:
         print("\nQuerying Device Info...")
-        info = await client.query_device_info(target_ip, device_id)
+        info = await device.get_info() # Use device method
         print(f"  Info Response: {info}")
+        # Info might be directly in the response payload, not nested
         log.info(f"  Device Info: Model={info.get('deviceModel')}, SW={info.get('swVersion')}, HW={info.get('hwVersion')}")
 
         print("\nQuerying Device State...")
-        state_resp = await client.query_device_state(target_ip, device_id)
-        print(f"  State Response: {state_resp}")
-        current_state = state_resp.get('states', {})
+        current_state = await device.get_state() # Use device method
+        print(f"  State Response: {current_state}") # Already extracted 'states' dict
         log.info(f"  Current State: {current_state}")
 
         print("\nTurning Light ON...")
-        await client.set_light_state(target_ip, device_id, True)
+        await device.turn_on() # Use device method
         await asyncio.sleep(0.5)
 
         print("\nSetting Brightness to 30%...")
-        await client.set_brightness(target_ip, device_id, 30)
+        await device.set_brightness(30) # Use device method
         await asyncio.sleep(0.5)
 
         print("\nSetting Color Temperature to 5000K...")
-        await client.set_color_temperature(target_ip, device_id, 5000)
+        await device.set_color_temperature(5000) # Use device method
         await asyncio.sleep(0.5)
 
         print("\nQuerying Device State Again...")
-        state_resp = await client.query_device_state(target_ip, device_id)
-        print(f"  New State Response: {state_resp}")
-        new_state = state_resp.get('states', {})
+        new_state = await device.get_state() # Use device method
+        print(f"  New State Response: {new_state}")
         log.info(f"  New State: {new_state}")
 
+        print("\nFlashing light for notification...")
+        flash_ok = await device.flash(flashes=2, on_duration=0.2, off_duration=0.2)
+        if flash_ok:
+            log.info("Flash completed successfully.")
+        else:
+            log.warning("Flash sequence encountered issues (check logs).")
+        await asyncio.sleep(1.0) # Wait after flash to observe restored state
+
         print("\nTurning Light OFF...")
-        await client.set_light_state(target_ip, device_id, False)
+        await device.turn_off() # Use device method
         log.info("Interaction sequence complete.")
 
     except (DLightTimeoutError, DLightConnectionError) as e:
-        log.error(f"\n--- Network Error during interaction ---")
+        log.error(f"\n--- Network Error during interaction with {device.id} ---")
         log.error(e)
     except (DLightResponseError, DLightCommandError) as e:
-        log.error(f"\n--- Device Command/Response Error during interaction ---")
+        log.error(f"\n--- Device Command/Response Error during interaction with {device.id} ---")
         log.error(e)
     except DLightError as e:
-        log.error(f"\n--- A dLight error occurred during interaction ---")
+        log.error(f"\n--- A dLight error occurred during interaction with {device.id} ---")
         log.error(e)
     except ValueError as e:
-         log.error(f"\n--- Invalid value provided during interaction ---")
+         log.error(f"\n--- Invalid value provided during interaction with {device.id} ---")
          log.error(e)
     except Exception as e:
-         log.exception("Unexpected error during interaction example")
+         log.exception(f"Unexpected error during interaction example with {device.id}")
 
 
 async def run_wifi_connect(client: AsyncDLightClient, device_id: str, ssid: str, password: str):
     """Attempts to send Wi-Fi credentials to a device (assumed in SoftAP mode)."""
     log.info(f"\n--- Attempting Wi-Fi Connection for {device_id} ---")
     log.warning("Ensure you are connected to the device's SoftAP network.")
-    log.warning(f"Targeting default SoftAP IP: {client.FACTORY_RESET_IP}") # Access constant via client instance or import
+    # Access constant via imported constants module
+    log.warning(f"Targeting default SoftAP IP: {constants.FACTORY_RESET_IP}")
     try:
         # Use the specific method from the client
         wifi_resp = await client.connect_to_wifi(device_id, ssid, password)
@@ -157,6 +175,10 @@ async def main():
         help="Target Wi-Fi password for --connect-wifi."
     )
     parser.add_argument(
+        '--first', action='store_true',
+        help="Automatically interact with the first discovered device (use with --discover)."
+    )
+    parser.add_argument(
         '-v', '--verbose', action='count', default=0,
         help="Increase logging verbosity (-v for INFO, -vv for DEBUG)."
     )
@@ -164,19 +186,36 @@ async def main():
     args = parser.parse_args()
 
     # Adjust logging level based on verbosity
+    # Set library logger level (covers client, discovery, device)
+    lib_logger = logging.getLogger('dlightclient')
     if args.verbose == 1:
-        logging.getLogger('dlightclient').setLevel(logging.INFO) # Set library level
+        lib_logger.setLevel(logging.INFO)
         log.setLevel(logging.INFO) # Set script level
     elif args.verbose >= 2:
-        logging.getLogger('dlightclient').setLevel(logging.DEBUG) # Set library level
+        lib_logger.setLevel(logging.DEBUG)
         log.setLevel(logging.DEBUG) # Set script level
         log.info("Debug logging enabled.")
+    else:
+        lib_logger.setLevel(logging.WARNING) # Default library level if not verbose
+
 
     # --- Execute requested action ---
     client = AsyncDLightClient(default_timeout=args.timeout)
+    discovered_devices_info = [] # Store discovery results if needed
 
     if args.discover:
-        await run_discovery(args.discover_duration)
+        discovered_devices_info = await run_discovery(args.discover_duration)
+        # If --first is specified, proceed to interact
+        if args.first and discovered_devices_info:
+            first_device_info = discovered_devices_info[0]
+            target_ip = first_device_info.get('ip_address')
+            target_id = first_device_info.get('deviceId') or first_device_info.get('deviceid')
+            if target_ip and target_id:
+                await run_interaction(client, target_ip, target_id)
+            else:
+                log.error("Could not extract IP and ID from the first discovered device.")
+        elif args.first:
+            log.warning("Discovery ran with --first, but no devices were found.")
 
     elif args.connect_wifi:
         if not all([args.device_id, args.ssid, args.password]):
@@ -185,13 +224,16 @@ async def main():
             await run_wifi_connect(client, args.device_id, args.ssid, args.password)
 
     elif args.ip and args.device_id:
+        # Interact with explicitly specified device
         await run_interaction(client, args.ip, args.device_id)
 
     elif args.ip or args.device_id:
-         parser.error("Both --ip and --id are required for interaction.")
+         # User provided one but not both for interaction
+         parser.error("Both --ip and --id are required for interaction (unless using --discover --first).")
 
     else:
-        log.info("No action specified. Use --discover, --connect-wifi, or provide --ip and --id.")
+        # No specific action requested other than potentially setting verbosity
+        log.info("No action specified (or discovery ran without --first). Use --discover, --connect-wifi, or provide --ip and --id.")
         log.info("Run with -h or --help for usage details.")
 
 
