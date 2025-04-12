@@ -15,7 +15,7 @@ DEFAULT_TIMEOUT = 5.0  # seconds
 MAX_PAYLOAD_SIZE = 10 * 1024 # 10 KB sanity limit for TCP response payload
 
 # UDP Discovery
-UDP_DISCOVERY_PAYLOAD_HEX = "476f6f676c654e50455f457269635f5761796e65" # "GoogleNPE_Eric_Wayne"
+UDP_DISCOVERY_PAYLOAD_HEX = "476f6f676c654e50455f457269635f5761796e65"
 
 # Logging - Define a root logger for the library if desired,
 # or let applications configure their own logging.
