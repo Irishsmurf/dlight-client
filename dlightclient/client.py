@@ -71,7 +71,8 @@ class AsyncDLightClient:
         Sends a command via TCP using asyncio streams and receives the response.
 
         Handles connection, sending the JSON command, reading the 4-byte length
-        prefix header, reading the JSON payload, and basic validation.
+        prefix header, reading the JSON payload, and basic validation including
+        checking for echoed commands.
 
         Args:
             target_ip: The IP address of the dLight device.
@@ -86,18 +87,20 @@ class AsyncDLightClient:
             DLightConnectionError: If any other connection/socket error occurs.
             DLightCommandError: If the command cannot be serialized to JSON.
             DLightResponseError: If the response header/payload is invalid,
-                                 malformed, or the device returns a non-SUCCESS status.
+                                 malformed, the device returns a non-SUCCESS status,
+                                 or the device echoes the command back.
             DLightError: For other unexpected errors during the process.
         """
         reader: Optional[asyncio.StreamReader] = None
         writer: Optional[asyncio.StreamWriter] = None
         operation = f"command {command.get('commandType', 'UNKNOWN')} to {target_ip}:{port}"
         _LOGGER.debug(f"Preparing {operation}")
+        json_data: bytes = b'' # Store serialized command for echo check
 
         try:
             # 1. Serialize command to JSON bytes
             try:
-                json_data = json.dumps(command).encode('utf-8')
+                json_data = json.dumps(command).encode('utf-8') # Store for later comparison
                 _LOGGER.debug(f"Serialized command ({len(json_data)} bytes): {json_data!r}")
             except TypeError as e:
                 raise DLightCommandError(f"Failed to serialize command to JSON: {e}\nCommand: {command}") from e
@@ -189,28 +192,34 @@ class AsyncDLightClient:
 
             # 8. Deserialize JSON payload
             response: Dict[str, Any] = {}
-            try:
-                # Handle the zero payload case - API might still send status in header implicitly?
-                # Assuming zero length means success with no specific data payload,
-                # but needs verification against API spec.
-                if payload_length == 0 and not payload_bytes:
-                     response = {"status": STATUS_SUCCESS, "_payload_length": 0} # Synthesize response
-                     _LOGGER.debug("Interpreting zero-length payload as implicit success.")
-                elif payload_bytes:
+            if payload_length == 0 and not payload_bytes:
+                 # Handle the zero payload case - Assume success
+                 response = {"status": STATUS_SUCCESS, "_payload_length": 0} # Synthesize response
+                 _LOGGER.debug("Interpreting zero-length payload as implicit success.")
+            elif payload_bytes:
+                 try:
                     response = json.loads(payload_bytes.decode('utf-8'))
                     _LOGGER.debug(f"Decoded JSON response: {response}")
-                else:
-                    # This case (payload_length > 0 but payload_bytes is empty)
-                    # should be caught by readexactly errors, but check just in case.
-                    raise DLightResponseError("Payload length > 0 but no payload bytes received.")
+                 except json.JSONDecodeError as e:
+                    raise DLightResponseError(f"Failed to decode JSON payload: {e}\nRaw Payload: {payload_bytes!r}") from e
+                 except UnicodeDecodeError as e:
+                    raise DLightResponseError(f"Failed to decode payload as UTF-8: {e}\nRaw Payload: {payload_bytes!r}") from e
+            else:
+                # This case (payload_length > 0 but payload_bytes is empty)
+                # should be caught by readexactly errors, but check just in case.
+                raise DLightResponseError("Payload length > 0 but no payload bytes received.")
 
-            except json.JSONDecodeError as e:
-                raise DLightResponseError(f"Failed to decode JSON payload: {e}\nRaw Payload: {payload_bytes!r}") from e
-            except UnicodeDecodeError as e:
-                 raise DLightResponseError(f"Failed to decode payload as UTF-8: {e}\nRaw Payload: {payload_bytes!r}") from e
+            # --- NEW: Check for echoed command ---
+            if payload_length > 0 and response == command:
+                _LOGGER.error(f"Device echoed back the command, indicating it was not recognized. Command: {command}")
+                raise DLightResponseError(
+                    f"Device echoed back the command (unrecognized command?). "
+                    f"Sent: {command}, Received: {response}"
+                )
+            # --- End NEW ---
 
             # 9. Check response status (unless synthesized for zero-payload)
-            if payload_length != 0:
+            if response.get("_payload_length") != 0: # Check if it's not the synthesized response
                 status = response.get("status")
                 if status != STATUS_SUCCESS:
                     # Include full response in error message for better debugging
@@ -227,7 +236,6 @@ class AsyncDLightClient:
             raise
         except asyncio.TimeoutError:
             # Catch any general timeout not caught by specific wait_for blocks
-            # This might indicate a logic error if waits aren't covering all awaits
              _LOGGER.warning(f"General timeout encountered during {operation}", exc_info=True)
              raise DLightTimeoutError(f"General timeout during {operation}") from None
         except Exception as e:
@@ -251,7 +259,7 @@ class AsyncDLightClient:
                  _LOGGER.debug("Writer already closing or closed.")
 
 
-    # --- Public API Methods ---
+    # --- Public API Methods (No changes needed below this line) ---
 
     async def set_light_state(self, target_ip: str, device_id: str, on: bool) -> Dict[str, Any]:
         """Turns the dLight on or off asynchronously."""
