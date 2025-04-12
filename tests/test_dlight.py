@@ -3,11 +3,8 @@ import asyncio
 import socket # Still needed for socket errors, constants
 import json
 import struct
-import time # Keep for synchronous _generate_command_id if needed by mocks
-import uuid
 import binascii
-import logging
-from unittest.mock import patch, MagicMock, ANY, call, AsyncMock
+from unittest.mock import patch, MagicMock, call, AsyncMock
 
 # --- Import from the refactored package structure ---
 try:
@@ -18,7 +15,6 @@ try:
         DLightError,
         DLightConnectionError,
         DLightTimeoutError,
-        DLightCommandError,
         DLightResponseError,
         # Import constants needed for tests
         FACTORY_RESET_IP,
@@ -27,7 +23,6 @@ try:
         DEFAULT_UDP_RESPONSE_PORT,
         BROADCAST_ADDRESS,
         UDP_DISCOVERY_PAYLOAD_HEX,
-        DEFAULT_TIMEOUT
     )
     # Import the internal protocol class for UDP testing if needed directly
     # (Alternatively, mock its behavior via the factory)
