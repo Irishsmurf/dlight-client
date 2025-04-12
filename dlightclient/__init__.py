@@ -17,6 +17,8 @@ from .constants import (
     DEFAULT_TIMEOUT,
     BROADCAST_ADDRESS,
     UDP_DISCOVERY_PAYLOAD_HEX,
+    MAX_PAYLOAD_SIZE,
+    STATUS_SUCCESS
 )
 from .exceptions import (
     DLightError,
