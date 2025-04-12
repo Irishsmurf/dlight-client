@@ -6,7 +6,7 @@ A Python library for discovering and controlling dLight smart lamps locally.
 """
 
 # Define package version
-__version__ = "1.1.0" # Increment version after refactor
+__version__ = "1.2.0" # Increment version after refactor
 
 # Import key components to make them available at the package level
 from .constants import (

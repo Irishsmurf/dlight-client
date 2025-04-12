@@ -1,6 +1,13 @@
 import unittest
 import asyncio
-from unittest.mock import patch, AsyncMock, MagicMock, call
+import socket # Still needed for socket errors, constants
+import json
+import struct
+import time # Keep for synchronous _generate_command_id if needed by mocks
+import uuid
+import binascii
+import logging
+from unittest.mock import patch, MagicMock, ANY, call, AsyncMock
 
 # --- Import necessary components ---
 try:
@@ -13,10 +20,15 @@ try:
         DLightResponseError,
         # Import constants if needed for expected values
         STATUS_SUCCESS,
+        DEFAULT_TCP_PORT, # Added for TCP tests
+        MAX_PAYLOAD_SIZE, # Added for TCP tests
+        FACTORY_RESET_IP, # Added for TCP tests
     )
     _IMPORT_SUCCESS = True
     # Define path for patching asyncio.sleep where it's used in device.py
     DEVICE_MODULE_PATH = 'dlightclient.device'
+    # Define path for patching client internals
+    CLIENT_MODULE_PATH = 'dlightclient.client'
 
 except ImportError as e:
     _IMPORT_SUCCESS = False
@@ -24,12 +36,16 @@ except ImportError as e:
     print(f"Import Error: {e}")
     # Define dummy classes/variables if import fails
     DEVICE_MODULE_PATH = 'dlightclient.device'
+    CLIENT_MODULE_PATH = 'dlightclient.client'
     class DLightError(Exception): pass
     class DLightTimeoutError(DLightError): pass
     class DLightResponseError(DLightError): pass
     class AsyncDLightClient: pass # Dummy needed for type hint
     class DLightDevice: pass # Dummy needed for tests that might run
     STATUS_SUCCESS = "SUCCESS"
+    DEFAULT_TCP_PORT = 3333
+    MAX_PAYLOAD_SIZE = 10240
+    FACTORY_RESET_IP = "192.168.4.1"
 
 
 @unittest.skipIf(not _IMPORT_SUCCESS, "Skipping device tests due to import failure.")
@@ -184,8 +200,8 @@ class TestDLightDevice(unittest.IsolatedAsyncioTestCase):
         """Test flash success with full state restoration."""
         # 1. Setup initial state mock response
         initial_state = {"on": True, "brightness": 80, "color": {"temperature": 3000}}
-        state_response = {"status": STATUS_SUCCESS, "states": initial_state}
-        self.mock_client.query_device_state.return_value = state_response
+        # Use get_state which extracts 'states'
+        self.mock_client.query_device_state.return_value = {"status": STATUS_SUCCESS, "states": initial_state}
         # Mock set commands to just return success
         self.mock_client.set_light_state.return_value = {"status": STATUS_SUCCESS}
         self.mock_client.set_brightness.return_value = {"status": STATUS_SUCCESS}
@@ -211,18 +227,21 @@ class TestDLightDevice(unittest.IsolatedAsyncioTestCase):
             call(self.test_ip, self.test_id, True),  # Flash 2 On
         ]
         # Filter set_light_state calls *during* flashing (before restore)
-        set_state_calls = [c for c in self.mock_client.set_light_state.await_args_list if len(c[0]) == 3]
-        # Exclude the final restore call for this check
+        # Use await_args_list which contains call objects
+        set_state_calls = self.mock_client.set_light_state.await_args_list
+        # Exclude the final restore call for this check by slicing
         self.assertEqual(set_state_calls[:num_flashes*2], flash_calls)
 
         # Check sleep calls during flashing
         sleep_calls = [call(off_dur), call(on_dur)] * num_flashes
+        # Slice sleep calls as well, as restore might add delays later
         self.assertEqual(mock_sleep.await_args_list[:num_flashes*2], sleep_calls)
 
         # Check restoration calls (brightness, temp, then final state)
         self.mock_client.set_brightness.assert_awaited_once_with(self.test_ip, self.test_id, 80)
         self.mock_client.set_color_temperature.assert_awaited_once_with(self.test_ip, self.test_id, 3000)
         # Final set_light_state call should restore original 'on' state (True)
+        # Use assert_awaited_with to check the last call specifically
         self.mock_client.set_light_state.assert_awaited_with(self.test_ip, self.test_id, True)
         # Total set_light_state calls = (flashes * 2) + 1 (restore)
         self.assertEqual(self.mock_client.set_light_state.await_count, num_flashes * 2 + 1)
@@ -233,8 +252,7 @@ class TestDLightDevice(unittest.IsolatedAsyncioTestCase):
         """Test flash restoration when only on/off state is available."""
         # Simulate state response missing brightness/color
         initial_state = {"on": False}
-        state_response = {"status": STATUS_SUCCESS, "states": initial_state}
-        self.mock_client.query_device_state.return_value = state_response
+        self.mock_client.query_device_state.return_value = {"status": STATUS_SUCCESS, "states": initial_state}
         self.mock_client.set_light_state.return_value = {"status": STATUS_SUCCESS}
 
         num_flashes = 1
@@ -244,6 +262,7 @@ class TestDLightDevice(unittest.IsolatedAsyncioTestCase):
         # Check initial query
         self.mock_client.query_device_state.assert_awaited_once()
         # Check flashing calls
+        # Use await_args_list for sequence checking
         self.assertEqual(self.mock_client.set_light_state.await_args_list[0], call(self.test_ip, self.test_id, False)) # Flash Off
         self.assertEqual(self.mock_client.set_light_state.await_args_list[1], call(self.test_ip, self.test_id, True))  # Flash On
 
@@ -251,7 +270,7 @@ class TestDLightDevice(unittest.IsolatedAsyncioTestCase):
         self.mock_client.set_brightness.assert_not_awaited()
         self.mock_client.set_color_temperature.assert_not_awaited()
         # Final state restore should set 'on' to False
-        self.mock_client.set_light_state.assert_awaited_with(self.test_ip, self.test_id, False)
+        self.mock_client.set_light_state.assert_awaited_with(self.test_ip, self.test_id, False) # Checks last call
         self.assertEqual(self.mock_client.set_light_state.await_count, num_flashes * 2 + 1)
 
     @patch(f'{DEVICE_MODULE_PATH}.asyncio.sleep', new_callable=AsyncMock)
@@ -271,7 +290,8 @@ class TestDLightDevice(unittest.IsolatedAsyncioTestCase):
         self.mock_client.query_device_state.assert_awaited_once() # Query was attempted
 
         # --- Assert that flashing and restoration calls were SKIPPED ---
-        self.mock_client.set_light_state.assert_not_awaited()
+        # Check await_count is 0 instead of assert_not_awaited for clarity with mocks
+        self.assertEqual(self.mock_client.set_light_state.await_count, 0)
         self.mock_client.set_brightness.assert_not_awaited()
         self.mock_client.set_color_temperature.assert_not_awaited()
         mock_sleep.assert_not_awaited()
@@ -281,20 +301,101 @@ class TestDLightDevice(unittest.IsolatedAsyncioTestCase):
     async def test_flash_restore_fails(self, mock_sleep):
         """Test flash returns False if restoration fails."""
         initial_state = {"on": True, "brightness": 50}
-        state_response = {"status": STATUS_SUCCESS, "states": initial_state}
-        self.mock_client.query_device_state.return_value = state_response
+        self.mock_client.query_device_state.return_value = {"status": STATUS_SUCCESS, "states": initial_state}
         self.mock_client.set_light_state.return_value = {"status": STATUS_SUCCESS}
         # Simulate brightness restore failing
         self.mock_client.set_brightness.side_effect = DLightResponseError("Failed to set brightness")
+        # Make sure temp restore doesn't fail (if it's called after brightness error)
+        self.mock_client.set_color_temperature.return_value = {"status": STATUS_SUCCESS}
+
 
         result = await self.device.flash()
 
         self.assertFalse(result) # Should return False because restore failed
+        # Check initial query and flashing happened
+        self.mock_client.query_device_state.assert_awaited_once()
+        # Flashing calls (default 3 flashes * 2 calls)
+        self.assertGreaterEqual(self.mock_client.set_light_state.await_count, 3*2)
+
         # Check restore was attempted
         self.mock_client.set_brightness.assert_awaited_once_with(self.test_ip, self.test_id, 50)
-        # Other restore steps might or might not run depending on exact finally logic
+        # Depending on implementation, temp/final state might still be attempted in finally
+        # Check if temp was called (it shouldn't be if brightness failed and broke out)
+        # self.mock_client.set_color_temperature.assert_not_awaited() # This depends on exact finally logic
+
+
+# --- Test Class specifically for AsyncDLightClient error handling ---
+# Patch asyncio.open_connection where it's used: inside the client module
+@unittest.skipIf(not _IMPORT_SUCCESS, "Skipping client tests due to import failure.")
+@patch(f'{CLIENT_MODULE_PATH}.asyncio.open_connection', new_callable=AsyncMock)
+class TestAsyncDLightClientTCPErrorHandling(unittest.IsolatedAsyncioTestCase):
+    """Tests specific error handling in AsyncDLightClient._async_send_tcp_command."""
+
+    def setUp(self):
+        # Instantiate the real client
+        self.client = AsyncDLightClient(default_timeout=1.0)
+        self.target_ip = "192.168.1.100"
+        self.device_id = "testdevice1"
+        # Common command structure for tests
+        self.test_command = {
+            "commandId": "cmd-test-echo",
+            "deviceId": self.device_id,
+            "commandType": "EXECUTE",
+            "commands": [{"on": True}]
+        }
+
+    # Helper to configure mock streams, copied and adapted from previous tests
+    def _configure_mock_streams(self, mock_open_connection, read_error=None, write_error=None, read_data=None):
+        mock_reader = AsyncMock(spec=asyncio.StreamReader)
+        mock_writer = AsyncMock(spec=asyncio.StreamWriter)
+        mock_open_connection.return_value = (mock_reader, mock_writer)
+        if read_error: mock_reader.readexactly.side_effect = read_error
+        elif read_data:
+             if isinstance(read_data, bytes) and len(read_data) >= 4:
+                 header = read_data[:4]
+                 payload = read_data[4:]
+                 mock_reader.readexactly.side_effect = [header, payload, asyncio.IncompleteReadError(b'', None)]
+             elif isinstance(read_data, bytes) and len(read_data) == 4:
+                  mock_reader.readexactly.side_effect = [read_data, asyncio.IncompleteReadError(b'', None)]
+             else:
+                 mock_reader.readexactly.side_effect = [read_data, asyncio.IncompleteReadError(b'', None)] if not isinstance(read_data, Exception) else read_data
+        else: mock_reader.readexactly.side_effect = asyncio.IncompleteReadError(partial=b'', expected=4)
+        if write_error: mock_writer.drain.side_effect = write_error
+        mock_writer.wait_closed = AsyncMock()
+        mock_writer.is_closing.return_value = False
+        mock_writer.get_extra_info.return_value = (self.target_ip, DEFAULT_TCP_PORT)
+        return mock_reader, mock_writer
+
+    async def test_send_tcp_command_echoed_back(self, mock_open_connection):
+        """Test DLightResponseError when the device echoes the command."""
+        # 1. Prepare the echoed response
+        command_json_bytes = json.dumps(self.test_command).encode('utf-8')
+        header_bytes = struct.pack('>I', len(command_json_bytes))
+        echoed_response_bytes = header_bytes + command_json_bytes
+
+        # 2. Configure mocks
+        mock_reader, mock_writer = self._configure_mock_streams(
+            mock_open_connection, read_data=echoed_response_bytes
+        )
+        # Patch ID generator to control commandId if needed, though direct command works
+        # with patch.object(self.client, '_generate_command_id', return_value=self.test_command['commandId']):
+
+        # 3. Call method and assert exception
+        with self.assertRaisesRegex(DLightResponseError, "Device echoed back the command"):
+            # Use the internal method directly or a public one that calls it
+            await self.client._async_send_tcp_command(self.target_ip, self.test_command)
+            # Or: await self.client.set_light_state(self.target_ip, self.device_id, True)
+            # (if self.test_command matches the set_light_state structure)
+
+        # 4. Verify calls
+        mock_open_connection.assert_awaited_once()
+        mock_writer.write.assert_called_once()
+        mock_writer.drain.assert_awaited_once()
+        # Check header and payload were read
+        expected_calls = [call(4), call(len(command_json_bytes))]
+        self.assertEqual(mock_reader.readexactly.await_args_list, expected_calls)
+        mock_writer.close.assert_called_once()
 
 
 if __name__ == '__main__':
     unittest.main()
-
