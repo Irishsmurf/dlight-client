@@ -202,6 +202,10 @@ pip install -e .
 ```
 
 # Testing
-Note: The test suite (tests/test_dlight.py) needs to be updated to reflect the refactored code structure (module paths for patching, imports, etc.).Once updated, you can run tests using:python -m unittest discover -s tests/ -p 'test_*.py'
+
+```sh
+python -m unittest discover tests/
+```
+
 # Or potentially targeting the specific test file if structure changed:
 # python -m unittest tests.test_dlight
