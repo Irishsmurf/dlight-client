@@ -39,9 +39,6 @@ class DLightDevice:
         self._ip = ip_address
         self._id = device_id
         self._client = client
-        # Potential future enhancement: store basic info/state fetched on init?
-        # self.info: Optional[Dict[str, Any]] = None
-        # self.state: Optional[Dict[str, Any]] = None
         _LOGGER.debug(f"DLightDevice initialized: ID='{self._id}', IP='{self._ip}'")
 
     @property
@@ -76,7 +73,6 @@ class DLightDevice:
             DLightError subclasses: On communication errors.
         """
         _LOGGER.info(f"Device {self.id}: Setting brightness to {brightness}%")
-        # Validation is handled by the client method, but could be duplicated here if desired
         return await self._client.set_brightness(self.ip, self.id, brightness)
 
     async def set_color_temperature(self, temperature: int) -> Dict[str, Any]:
@@ -91,7 +87,6 @@ class DLightDevice:
             DLightError subclasses: On communication errors.
         """
         _LOGGER.info(f"Device {self.id}: Setting color temperature to {temperature}K")
-        # Validation is handled by the client method
         return await self._client.set_color_temperature(self.ip, self.id, temperature)
 
     async def get_state(self) -> Dict[str, Any]:
@@ -108,7 +103,6 @@ class DLightDevice:
         """
         _LOGGER.debug(f"Device {self.id}: Querying state")
         response = await self._client.query_device_state(self.ip, self.id)
-        # Extract the nested 'states' dictionary for convenience
         state_data = response.get('states', {})
         _LOGGER.debug(f"Device {self.id}: Received state: {state_data}")
         return state_data
@@ -125,7 +119,6 @@ class DLightDevice:
         """
         _LOGGER.debug(f"Device {self.id}: Querying info")
         info = await self._client.query_device_info(self.ip, self.id)
-        # Return the whole response payload as it directly contains info fields
         _LOGGER.debug(f"Device {self.id}: Received info: {info}")
         return info
 
