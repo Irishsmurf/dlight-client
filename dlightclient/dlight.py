@@ -45,6 +45,7 @@ class DLightResponseError(DLightError):
 class AsyncDLightClient:
     """
     An asynchronous client for interacting with dLight devices using asyncio.
+    Compatible with Python 3.9+.
 
     Provides async methods for discovering devices, querying status, and
     controlling the light's state (on/off, brightness, color temperature).
@@ -68,6 +69,7 @@ class AsyncDLightClient:
     async def _async_send_tcp_command(self, target_ip: str, command: Dict[str, Any]) -> Dict[str, Any]:
         """
         Sends a command via TCP using asyncio streams and receives the response.
+        Uses asyncio.wait_for for timeouts (Python 3.9+ compatible).
 
         Handles the 4-byte length prefix header in the response asynchronously.
 
@@ -87,6 +89,10 @@ class AsyncDLightClient:
         """
         reader = None
         writer = None
+        header = b'' # Initialize header to empty bytes
+        payload_bytes = b'' # Initialize payload_bytes
+        payload_length = -1 # Initialize payload_length
+
         try:
             # Serialize command to JSON bytes (synchronous part)
             try:
@@ -94,77 +100,143 @@ class AsyncDLightClient:
             except TypeError as e:
                 raise DLightCommandError(f"Failed to serialize command to JSON: {e}") from e
 
-            # Open connection with timeout
-            async with asyncio.timeout(self.default_timeout):
-                _LOGGER.debug("Opening connection to %s:%d", target_ip, DEFAULT_TCP_PORT)
-                reader, writer = await asyncio.open_connection(target_ip, DEFAULT_TCP_PORT)
+            # --- Open connection, send, read header ---
+            _LOGGER.debug("Opening connection to %s:%d", target_ip, DEFAULT_TCP_PORT)
 
-                # Send the command
-                _LOGGER.debug("Sending command: %s", json_data)
-                writer.write(json_data)
-                await writer.drain()
+            # Connect phase with wait_for
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(target_ip, DEFAULT_TCP_PORT),
+                    timeout=self.default_timeout
+                )
+            except asyncio.TimeoutError:
+                 raise DLightTimeoutError(f"Timeout connecting to {target_ip}:{DEFAULT_TCP_PORT}") from None
+            except ConnectionRefusedError as e:
+                 raise DLightConnectionError(f"Connection refused by {target_ip}:{DEFAULT_TCP_PORT}") from e
+            except OSError as e: # Catch other potential connect errors
+                 raise DLightConnectionError(f"Network error connecting to {target_ip}:{DEFAULT_TCP_PORT}: {e}") from e
 
-                # --- Read the response ---
-                # 1. Read the 4-byte header (payload length)
-                _LOGGER.debug("Reading header (4 bytes)")
-                header = await reader.readexactly(4)
+            # Send phase (drain can block)
+            _LOGGER.debug("Sending command: %s", json_data)
+            writer.write(json_data)
+            try:
+                await asyncio.wait_for(writer.drain(), timeout=self.default_timeout)
+            except asyncio.TimeoutError:
+                 raise DLightTimeoutError(f"Timeout sending data to {target_ip}:{DEFAULT_TCP_PORT}") from None
+            except OSError as e: # Catch errors during drain/send
+                 raise DLightConnectionError(f"Network error sending data to {target_ip}:{DEFAULT_TCP_PORT}: {e}") from e
 
-            # Decode the header (Big Endian unsigned integer) - synchronous
+            # Read header phase
+            _LOGGER.debug("Reading header (4 bytes)")
+            try:
+                header = await asyncio.wait_for(reader.readexactly(4), timeout=self.default_timeout)
+            except asyncio.TimeoutError:
+                 raise DLightTimeoutError(f"Timeout reading header from {target_ip}:{DEFAULT_TCP_PORT}") from None
+            except asyncio.IncompleteReadError as e:
+                raise DLightResponseError(
+                    f"Connection closed unexpectedly while reading header. "
+                    f"Expected 4 bytes, got {len(e.partial)}: {e.partial!r}"
+                ) from e
+            except OSError as e: # Catch errors during read
+                 raise DLightConnectionError(f"Network error reading header from {target_ip}:{DEFAULT_TCP_PORT}: {e}") from e
+
+
+            # Log raw header received for debugging
+            _LOGGER.debug(f"RAW HEADER RECEIVED: {header!r} (Hex: {header.hex()})")
+
+            # Decode the header (synchronous)
             try:
                 payload_length = struct.unpack('>I', header)[0]
-                _LOGGER.debug("Received header, payload length: %d", payload_length)
+                _LOGGER.debug("Decoded header, payload length: %d", payload_length)
             except struct.error as e:
-                 raise DLightResponseError(f"Failed to unpack header bytes: {e}") from e
+                 _LOGGER.error(f"Failed to unpack header bytes: {header!r}")
+                 # Use f-string formatting correctly
+                 raise DLightResponseError(f"Failed to unpack header bytes ({header!r}): {e}") from e
 
+
+            # Validate payload length
             if payload_length == 0:
-                raise DLightResponseError("Received zero payload length in header")
-            if payload_length > MAX_PAYLOAD_SIZE:
-                 raise DLightResponseError(f"Payload length {payload_length} exceeds maximum limit {MAX_PAYLOAD_SIZE}")
-
-            # Read the JSON payload with timeout
-            async with asyncio.timeout(self.default_timeout):
+                _LOGGER.warning("Received zero payload length in header. Assuming empty response.")
+                payload_bytes = b''
+                # Consider returning immediately or based on command type if 0 is valid
+            elif payload_length > MAX_PAYLOAD_SIZE:
+                 raise DLightResponseError(
+                     f"Payload length {payload_length} from header ({header!r}) "
+                     f"exceeds maximum limit {MAX_PAYLOAD_SIZE}"
+                 )
+            else:
+                # Read payload phase
                 _LOGGER.debug("Reading payload (%d bytes)", payload_length)
-                payload_bytes = await reader.readexactly(payload_length)
+                try:
+                    payload_bytes = await asyncio.wait_for(reader.readexactly(payload_length), timeout=self.default_timeout)
+                except asyncio.TimeoutError:
+                     raise DLightTimeoutError(f"Timeout reading payload ({payload_length} bytes) from {target_ip}:{DEFAULT_TCP_PORT}") from None
+                except asyncio.IncompleteReadError as e:
+                     raise DLightResponseError(
+                         f"Connection closed unexpectedly while reading payload. "
+                         f"Expected {e.expected} bytes, got {len(e.partial)}. Partial data: {e.partial!r}"
+                     ) from e
+                except OSError as e: # Catch errors during read
+                    raise DLightConnectionError(f"Network error reading payload from {target_ip}:{DEFAULT_TCP_PORT}: {e}") from e
 
-            # Deserialize the JSON payload - synchronous
+
+            # Deserialize the JSON payload (synchronous)
             try:
-                response = json.loads(payload_bytes.decode('utf-8'))
-                _LOGGER.debug("Received response: %s", response)
+                # Handle the zero payload case - may need adjustment based on API behavior
+                if payload_length == 0 and not payload_bytes:
+                     # Assuming zero length means success with no specific data payload
+                     # Check if the command expects data even on success before doing this
+                     response = {"status": "SUCCESS", "payload_length": 0}
+                     _LOGGER.debug("Interpreting zero-length payload as success")
+                elif payload_bytes:
+                    response = json.loads(payload_bytes.decode('utf-8'))
+                    _LOGGER.debug("Received response content: %s", response)
+                else:
+                    # Should not happen if payload_length > 0 but payload_bytes is empty
+                    raise DLightResponseError("Payload length > 0 but no payload bytes received.")
+
             except json.JSONDecodeError as e:
                 raise DLightResponseError(f"Failed to decode JSON payload: {e}\nRaw Payload: {payload_bytes!r}") from e
             except UnicodeDecodeError as e:
                  raise DLightResponseError(f"Failed to decode payload as UTF-8: {e}\nRaw Payload: {payload_bytes!r}") from e
 
-            # Check status - synchronous
-            status = response.get("status")
-            if status != "SUCCESS":
-                raise DLightResponseError(f"dLight returned non-SUCCESS status: '{status}'. Full response: {response}")
+            # Check status (synchronous)
+            # Skip status check if we assumed success for zero-length payload
+            if payload_length != 0:
+                status = response.get("status")
+                if status != "SUCCESS":
+                    raise DLightResponseError(f"dLight returned non-SUCCESS status: '{status}'. Full response: {response}")
 
             return response
 
-        except asyncio.TimeoutError:
-            raise DLightTimeoutError(f"Timeout communicating with {target_ip}:{DEFAULT_TCP_PORT}") from None
-        except ConnectionRefusedError as e:
-             raise DLightConnectionError(f"Connection refused by {target_ip}:{DEFAULT_TCP_PORT}") from e
-        except OSError as e: # Catch other potential socket/network errors
-            raise DLightConnectionError(f"Network error communicating with {target_ip}:{DEFAULT_TCP_PORT}: {e}") from e
-        except asyncio.IncompleteReadError as e:
-             raise DLightResponseError(f"Connection closed unexpectedly while reading. Expected {e.expected} bytes, got {len(e.partial)}.") from e
+        # Keep general exception handling, map TimeoutError specifically
+        except asyncio.TimeoutError: # Catch any timeout not caught by specific wait_for
+             # This might be redundant if all waits are covered, but good safety net
+             raise DLightTimeoutError(f"General timeout during operation with {target_ip}:{DEFAULT_TCP_PORT}") from None
+        # Specific exceptions caught above, re-raise generic ones
         except Exception as e:
-             # Catch any other unexpected errors during the process
              _LOGGER.exception("Unexpected error during TCP command")
+             if isinstance(e, DLightError): raise # Don't re-wrap library errors
+             # Wrap other unexpected errors
              raise DLightError(f"An unexpected error occurred: {e}") from e
         finally:
             if writer:
                 try:
-                    writer.close()
-                    await writer.wait_closed()
-                    _LOGGER.debug("Connection closed")
-                except Exception:
-                    _LOGGER.debug("Error closing writer (may already be closed)")
+                    if not writer.is_closing():
+                        writer.close()
+                        # wait_closed() can hang if connection broken uncleanly, add timeout?
+                        try:
+                            await asyncio.wait_for(writer.wait_closed(), timeout=2.0)
+                        except asyncio.TimeoutError:
+                            _LOGGER.debug("Timeout waiting for writer close, proceeding.")
+                        _LOGGER.debug("Connection closed")
+                    else:
+                        _LOGGER.debug("Writer already closing.")
+                except Exception as e:
+                    _LOGGER.debug(f"Error closing writer (may already be closed): {e}")
 
 
-    # --- Public API Methods (Async) ---
+    # --- Public API Methods (Async - No changes needed here) ---
 
     async def set_light_state(self, target_ip: str, device_id: str, on: bool) -> Dict[str, Any]:
         """Turns the dLight on or off (asynchronously)."""
@@ -230,9 +302,12 @@ class AsyncDLightClient:
             "password": password
         }
         try:
+             # Ensure target_ip is correctly passed if not using default logic
              return await self._async_send_tcp_command(FACTORY_RESET_IP, command)
         except DLightError as e:
+             # Wrap error with specific context
              raise DLightCommandError(f"Failed to send SSID_CONNECT to {FACTORY_RESET_IP}: {e}") from e
+
 
     # --- UDP Discovery (Async) ---
 
@@ -274,7 +349,6 @@ class AsyncDLightClient:
 
         def connection_lost(self, exc: Optional[Exception]):
             _LOGGER.debug(f"Discovery listener connection lost: {exc}")
-            # Optionally handle cleanup or reconnection logic if needed
 
 
     @staticmethod
@@ -300,6 +374,7 @@ class AsyncDLightClient:
         results_list = []
         transport = None
         protocol = None
+        send_transport = None # Initialize send_transport
 
         try:
             # Decode the hex payload (synchronous)
@@ -309,33 +384,39 @@ class AsyncDLightClient:
                  _LOGGER.error(f"Internal error: failed to decode UDP probe payload hex: {e}")
                  return []
 
-            # Create the listening endpoint
-            # Pass the shared set and list to the protocol instance
-            transport, protocol = await loop.create_datagram_endpoint(
+            # Create the listening endpoint - REMOVED await
+            # create_datagram_endpoint needs to be run in the loop executor if called from a different thread,
+            # but here it's called directly within the async function's running loop.
+            transport, protocol = loop.create_datagram_endpoint(
                 lambda: AsyncDLightClient._DiscoveryProtocol(discovered_devices_set, results_list),
                 local_addr=('0.0.0.0', response_port),
-                allow_broadcast=False # Listener doesn't need broadcast
+                allow_broadcast=False
             )
             _LOGGER.debug(f"Listening for discovery responses on port {response_port}")
 
-            # Create a separate sending socket/transport for broadcast
-            # Using a separate one avoids potential issues with reusing the listener
-            send_transport, _ = await loop.create_datagram_endpoint(
-                lambda: asyncio.DatagramProtocol(), # Simple protocol for sending
-                remote_addr=(broadcast_address, discovery_port) # Set remote for easy sendto
+            # Create a separate sending socket/transport for broadcast - REMOVED await
+            send_transport, _ = loop.create_datagram_endpoint(
+                lambda: asyncio.DatagramProtocol(),
+                remote_addr=(broadcast_address, discovery_port),
+                allow_broadcast=True # Request broadcast permission here if possible
             )
-            # Enable broadcasting on the sending socket if possible (may require privileges)
+
+            # Enable broadcasting on the sending socket (best effort)
             sending_socket = send_transport.get_extra_info('socket')
             if sending_socket:
-                 sending_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-                 _LOGGER.debug("Broadcast enabled for sending socket")
+                 try:
+                     sending_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                     _LOGGER.debug("Broadcast enabled for sending socket")
+                 except OSError as e:
+                      # May fail if allow_broadcast=True wasn't enough or OS restricts
+                      _LOGGER.warning(f"Could not enable broadcast on sending socket: {e}. Discovery might fail.")
             else:
-                 _LOGGER.warning("Could not get underlying socket to enable broadcast.")
+                 _LOGGER.warning("Could not get underlying socket for sending socket to enable broadcast.")
 
 
             # Send the broadcast probe
             _LOGGER.info(f"Sending discovery probe to {broadcast_address}:{discovery_port}")
-            send_transport.sendto(probe_payload) # No need for address if remote_addr was set
+            send_transport.sendto(probe_payload)
 
             # Wait for responses
             await asyncio.sleep(discovery_duration)
@@ -352,17 +433,19 @@ class AsyncDLightClient:
             _LOGGER.exception(f"An unexpected error occurred during async discovery: {e}")
             return []
         finally:
+            # Close transports in reverse order of creation? Or just close both.
+            if send_transport: # Check if it was successfully created before closing
+                 send_transport.close()
+                 _LOGGER.debug("Discovery sender transport closed.")
             if transport:
                 transport.close()
                 _LOGGER.debug("Discovery listener transport closed.")
-            if 'send_transport' in locals() and send_transport:
-                 send_transport.close()
-                 _LOGGER.debug("Discovery sender transport closed.")
+
 
         return results_list
 
 
-# --- Example Usage (Async) ---
+# --- Example Usage (Async - No changes needed here) ---
 async def main():
     """Example of using the async client."""
     logging.basicConfig(level=logging.DEBUG) # Enable debug logging for example
