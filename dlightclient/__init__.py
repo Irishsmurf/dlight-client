@@ -17,6 +17,8 @@ from .constants import (
     DEFAULT_TIMEOUT,
     BROADCAST_ADDRESS,
     UDP_DISCOVERY_PAYLOAD_HEX,
+    MAX_PAYLOAD_SIZE,
+    STATUS_SUCCESS
 )
 from .exceptions import (
     DLightError,
@@ -27,9 +29,10 @@ from .exceptions import (
 )
 from .discovery import discover_devices
 from .client import AsyncDLightClient
+from .device import (
+    DLightDevice,
+)
 
-# Define what gets imported with 'from dlightclient import *'
-# (Generally discouraged, but good practice to define)
 __all__ = [
     # Client
     'AsyncDLightClient',
@@ -47,6 +50,12 @@ __all__ = [
     'DEFAULT_UDP_RESPONSE_PORT',
     'FACTORY_RESET_IP',
     'DEFAULT_TIMEOUT',
+    'BROADCAST_ADDRESS',
+    'UDP_DISCOVERY_PAYLOAD_HEX',
+    'MAX_PAYLOAD_SIZE',
+    'STATUS_SUCCESS',
+    # Device
+    'DLightDevice',
     # Version
     '__version__',
 ]
