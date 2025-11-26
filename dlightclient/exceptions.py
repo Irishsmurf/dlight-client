@@ -2,22 +2,21 @@
 """Custom exception types for the dlightclient library."""
 
 class DLightError(Exception):
-    """Base exception for dlightclient errors."""
-    pass
+    """The base exception for all dlightclient errors."""
+
 
 class DLightConnectionError(DLightError):
-    """Error connecting to the dLight device."""
-    pass
+    """Raised when a connection to a dLight device cannot be established."""
+
 
 class DLightTimeoutError(DLightConnectionError):
-    """Timeout during communication with the dLight device."""
-    pass
+    """Raised when a network operation times out."""
+
 
 class DLightCommandError(DLightError):
-    """Error related to command formatting or execution."""
-    pass
+    """Raised for errors related to command formatting or execution."""
+
 
 class DLightResponseError(DLightError):
-    """Error parsing or interpreting the response from the dLight device."""
-    pass
+    """Raised when a response from a dLight device is invalid or indicates an error."""
 

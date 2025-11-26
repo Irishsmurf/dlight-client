@@ -27,7 +27,15 @@ log = logging.getLogger(__name__)
 
 
 async def run_discovery(duration: float):
-    """Runs the discovery process and prints results."""
+    """Scans the network for dLight devices and prints the results.
+
+    Args:
+        duration: The number of seconds to listen for discovery responses.
+
+    Returns:
+        A list of dictionaries, where each dictionary contains information
+        about a discovered device.
+    """
     log.info(f"\n--- Discovering Devices ({duration} seconds) ---")
     try:
         devices_info = await discover_devices(discovery_duration=duration)
@@ -50,8 +58,16 @@ async def run_discovery(duration: float):
 
 
 async def run_interaction(client: AsyncDLightClient, target_ip: str, device_id: str):
-    """
-    Runs a sequence of interactions with a specific device using DLightDevice.
+    """Demonstrates a sequence of interactions with a dLight device.
+
+    This function showcases how to use the DLightDevice wrapper to query device
+    information, get and set its state (on/off, brightness, color temperature),
+    and trigger a notification flash.
+
+    Args:
+        client: An initialized AsyncDLightClient instance.
+        target_ip: The IP address of the target dLight device.
+        device_id: The device ID of the target dLight device.
     """
     log.info(f"\n--- Interacting with: {device_id} at {target_ip} using DLightDevice ---")
 
@@ -117,7 +133,18 @@ async def run_interaction(client: AsyncDLightClient, target_ip: str, device_id: 
 
 
 async def run_wifi_connect(client: AsyncDLightClient, device_id: str, ssid: str, password: str):
-    """Attempts to send Wi-Fi credentials to a device (assumed in SoftAP mode)."""
+    """Sends Wi-Fi credentials to a dLight device in SoftAP mode.
+
+    This function is used for initial device provisioning. It assumes the dLight
+    device is in its factory reset state (SoftAP mode) and that this script
+    is being run from a machine connected to the device's Wi-Fi network.
+
+    Args:
+        client: An initialized AsyncDLightClient instance.
+        device_id: The device ID of the dLight device.
+        ssid: The SSID of the target Wi-Fi network.
+        password: The password of the target Wi-Fi network.
+    """
     log.info(f"\n--- Attempting Wi-Fi Connection for {device_id} ---")
     log.warning("Ensure you are connected to the device's SoftAP network.")
     # Access constant via imported constants module
@@ -138,7 +165,13 @@ async def run_wifi_connect(client: AsyncDLightClient, device_id: str, ssid: str,
 
 
 async def main():
-    """Main entry point for the CLI/example script."""
+    """Parses command-line arguments and executes the requested actions.
+
+    This function serves as the main entry point for the command-line
+    interface. It handles argument parsing for actions like discovery,
+    device interaction, and Wi-Fi provisioning, and then calls the
+    appropriate functions based on the user's input.
+    """
     parser = argparse.ArgumentParser(description="dLight Client CLI / Example Runner")
     parser.add_argument(
         '--discover', action='store_true',
