@@ -12,22 +12,23 @@ from .exceptions import DLightError, DLightTimeoutError, DLightResponseError
 _LOGGER = logging.getLogger(__name__)
 
 class DLightDevice:
-    """
-    Represents and interacts with a single dLight device.
+    """Represents and interacts with a single dLight device.
 
-    This class wraps an AsyncDLightClient instance and manages the IP address
-    and device ID, providing simpler methods for controlling and querying
-    a specific device.
+    This class provides a high-level, object-oriented interface for interacting
+    with a specific dLight device. It simplifies control and state management by
+    encapsulating the device's IP address, ID, and an `AsyncDLightClient` instance.
     """
 
     def __init__(self, ip_address: str, device_id: str, client: AsyncDLightClient):
-        """
-        Initializes a DLightDevice instance.
+        """Initializes a DLightDevice instance.
 
         Args:
             ip_address: The IP address of the dLight device.
             device_id: The unique device ID of the dLight device.
             client: An initialized AsyncDLightClient instance to use for communication.
+
+        Raises:
+            ValueError: If ip_address, device_id, or client are invalid.
         """
         if not ip_address:
             raise ValueError("IP address cannot be empty")
@@ -43,63 +44,69 @@ class DLightDevice:
 
     @property
     def ip(self) -> str:
-        """Returns the IP address of the device."""
+        """The IP address of the device."""
         return self._ip
 
     @property
     def id(self) -> str:
-        """Returns the device ID of the device."""
+        """The unique device ID."""
         return self._id
 
     async def turn_on(self) -> Dict[str, Any]:
-        """Turns the light on."""
+        """Turns the light on.
+
+        Returns:
+            The response from the device.
+        """
         _LOGGER.info(f"Device {self.id}: Turning ON")
         return await self._client.set_light_state(self.ip, self.id, True)
 
     async def turn_off(self) -> Dict[str, Any]:
-        """Turns the light off."""
+        """Turns the light off.
+
+        Returns:
+            The response from the device.
+        """
         _LOGGER.info(f"Device {self.id}: Turning OFF")
         return await self._client.set_light_state(self.ip, self.id, False)
 
     async def set_brightness(self, brightness: int) -> Dict[str, Any]:
-        """
-        Sets the light brightness.
+        """Sets the brightness of the light.
 
         Args:
-            brightness: Brightness level (0-100).
+            brightness: The desired brightness level, from 0 to 100.
+
+        Returns:
+            The response from the device.
 
         Raises:
-            ValueError: If brightness is outside the valid range.
-            DLightError subclasses: On communication errors.
+            ValueError: If brightness is outside the valid range [0, 100].
         """
         _LOGGER.info(f"Device {self.id}: Setting brightness to {brightness}%")
         return await self._client.set_brightness(self.ip, self.id, brightness)
 
     async def set_color_temperature(self, temperature: int) -> Dict[str, Any]:
-        """
-        Sets the light color temperature.
+        """Sets the color temperature of the light.
 
         Args:
-            temperature: Color temperature in Kelvin (2600-6000).
+            temperature: The desired color temperature in Kelvin, from 2600 to 6000.
+
+        Returns:
+            The response from the device.
 
         Raises:
-            ValueError: If temperature is outside the valid range.
-            DLightError subclasses: On communication errors.
+            ValueError: If temperature is outside the valid range [2600, 6000].
         """
         _LOGGER.info(f"Device {self.id}: Setting color temperature to {temperature}K")
         return await self._client.set_color_temperature(self.ip, self.id, temperature)
 
     async def get_state(self) -> Dict[str, Any]:
-        """
-        Queries and returns the current state of the light.
+        """Queries and returns the current state of the light.
 
         Returns:
             A dictionary representing the device's state (e.g.,
-            {'on': True, 'brightness': 50, 'color': {'temperature': 4000}}).
-            Returns an empty dict if state cannot be retrieved or is missing.
-
-        Raises:
-            DLightError subclasses: On communication errors.
+            `{'on': True, 'brightness': 50}`). Returns an empty dict if the
+            state cannot be retrieved or is missing from the response.
         """
         _LOGGER.debug(f"Device {self.id}: Querying state")
         response = await self._client.query_device_state(self.ip, self.id)
@@ -108,14 +115,11 @@ class DLightDevice:
         return state_data
 
     async def get_info(self) -> Dict[str, Any]:
-        """
-        Queries and returns device information (model, versions, etc.).
+        """Queries and returns device information.
 
         Returns:
-            A dictionary containing device information.
-
-        Raises:
-            DLightError subclasses: On communication errors.
+            A dictionary containing device information, such as model and firmware
+            version.
         """
         _LOGGER.debug(f"Device {self.id}: Querying info")
         info = await self._client.query_device_info(self.ip, self.id)
@@ -128,19 +132,19 @@ class DLightDevice:
         on_duration: float = 0.3,
         off_duration: float = 0.3,
     ) -> bool:
-        """
-        Flashes the light on/off for notification and restores its original state.
+        """Flashes the light to provide a visual notification.
+
+        This method saves the light's current state, flashes it a specified number
+        of times, and then restores the original state.
 
         Args:
-            flashes: Number of times to flash (one flash = off then on).
-            on_duration: Duration the light stays ON in each flash cycle (seconds).
-            off_duration: Duration the light stays OFF in each flash cycle (seconds).
+            flashes: The number of times to flash.
+            on_duration: The duration in seconds to keep the light on during a flash.
+            off_duration: The duration in seconds to keep the light off during a flash.
 
         Returns:
-            True if the flashing sequence completed successfully, False otherwise.
-
-        Raises:
-            DLightError subclasses: On communication errors during the process.
+            True if the sequence completed and the original state was restored
+            successfully, False otherwise.
         """
         original_state: Optional[Dict[str, Any]] = None
         original_on: Optional[bool] = None

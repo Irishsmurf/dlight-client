@@ -21,7 +21,18 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class _DiscoveryProtocol(asyncio.DatagramProtocol):
-    """Asyncio Protocol to handle incoming discovery responses."""
+    """An asyncio datagram protocol for handling dLight discovery responses.
+
+    This protocol is used internally by `discover_devices`. It processes incoming
+    UDP datagrams, decodes them as JSON, and adds information about discovered
+    devices to a shared list, ensuring no duplicates are added.
+
+    Args:
+        discovered_devices_set: A set to store the IP addresses of devices
+            that have already been discovered, used for deduplication.
+        results_list: A list to append the information of newly discovered
+            devices to.
+    """
     def __init__(self, discovered_devices_set: Set[str], results_list: List[Dict]):
         self.transport: Optional[asyncio.DatagramTransport] = None
         self.discovered_devices_set = discovered_devices_set
@@ -78,20 +89,22 @@ async def discover_devices(
     discovery_port: int = DEFAULT_UDP_DISCOVERY_PORT,
     broadcast_address: str = BROADCAST_ADDRESS
 ) -> List[Dict[str, Any]]:
-    """
-    Discovers dLight devices on the network using asyncio UDP.
+    """Discovers dLight devices on the local network using UDP broadcast.
 
-    Sends a UDP broadcast probe and listens for JSON responses.
+    This function sends a broadcast UDP probe to the network and listens for
+    responses from dLight devices for a specified duration. It handles the
+    creation of UDP transports for sending and receiving.
 
     Args:
-        discovery_duration: How long to listen for responses (in seconds).
+        discovery_duration: The number of seconds to listen for responses.
         response_port: The local UDP port to listen on for responses.
-        discovery_port: The UDP port dLights listen on for discovery probes.
-        broadcast_address: The broadcast address to send the probe to.
+        discovery_port: The UDP port dLight devices listen on for discovery probes.
+        broadcast_address: The network broadcast address to send the probe to.
 
     Returns:
-        A list of dictionaries, each representing a discovered device
-        including its 'ip_address'. Returns an empty list if none found or on error.
+        A list of dictionaries, where each dictionary contains information
+        about a discovered device, including its IP address. Returns an empty
+        list if no devices are found or if an error occurs.
     """
     loop = asyncio.get_running_loop()
     discovered_devices_set: Set[str] = set()

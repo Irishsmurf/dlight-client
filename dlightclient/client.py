@@ -36,28 +36,28 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class AsyncDLightClient:
-    """
-    An asynchronous client for interacting with dLight devices using asyncio TCP.
+    """An asynchronous client for dLight device communication.
 
-    Provides async methods for querying status and controlling the light's state
-    (on/off, brightness, color temperature) and initiating Wi-Fi connection.
+    This class handles the TCP communication with dLight devices, allowing for
+    sending commands and receiving responses. It provides methods for controlling
+    the light's state, querying its status, and configuring its Wi-Fi connection.
 
-    Discovery is handled separately by the `discover_devices` function in the
-    `dlightclient.discovery` module.
+    Args:
+        default_timeout (float): The default timeout in seconds for network
+            operations.
     """
 
     def __init__(self, default_timeout: float = DEFAULT_TIMEOUT):
-        """
-        Initializes the AsyncDLightClient.
-
-        Args:
-            default_timeout: Default network operation timeout in seconds.
-        """
+        """Initializes the AsyncDLightClient."""
         self.default_timeout = default_timeout
         _LOGGER.debug(f"AsyncDLightClient initialized with timeout: {default_timeout}s")
 
     def _generate_command_id(self) -> str:
-        """Generates a unique command ID (synchronous)."""
+        """Generates a unique command ID.
+
+        Returns:
+            A unique string to be used as a command ID.
+        """
         # Combines timestamp with a short UUID part for uniqueness
         return f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
 
@@ -67,29 +67,26 @@ class AsyncDLightClient:
         command: Dict[str, Any],
         port: int = DEFAULT_TCP_PORT
     ) -> Dict[str, Any]:
-        """
-        Sends a command via TCP using asyncio streams and receives the response.
+        """Sends a command to a dLight device and returns the response.
 
-        Handles connection, sending the JSON command, reading the 4-byte length
-        prefix header, reading the JSON payload, and basic validation including
-        checking for echoed commands.
+        This method establishes a TCP connection, sends a JSON-serialized command,
+        and waits for a response. The dLight protocol uses a 4-byte, big-endian
+        length prefix followed by a JSON payload for responses.
 
         Args:
             target_ip: The IP address of the dLight device.
-            command: The command dictionary to send (will be JSON serialized).
-            port: The TCP port to connect to (defaults to DEFAULT_TCP_PORT).
+            command: The command to send, as a dictionary.
+            port: The TCP port to connect to.
 
         Returns:
-            The JSON response payload as a dictionary.
+            The JSON response from the device as a dictionary.
 
         Raises:
-            DLightTimeoutError: If any network operation times out.
-            DLightConnectionError: If any other connection/socket error occurs.
+            DLightTimeoutError: If a network operation times out.
+            DLightConnectionError: If a connection error occurs.
             DLightCommandError: If the command cannot be serialized to JSON.
-            DLightResponseError: If the response header/payload is invalid,
-                                 malformed, the device returns a non-SUCCESS status,
-                                 or the device echoes the command back.
-            DLightError: For other unexpected errors during the process.
+            DLightResponseError: If the response is invalid or indicates an error.
+            DLightError: For any other unexpected errors.
         """
         reader: Optional[asyncio.StreamReader] = None
         writer: Optional[asyncio.StreamWriter] = None
@@ -262,7 +259,16 @@ class AsyncDLightClient:
     # --- Public API Methods (No changes needed below this line) ---
 
     async def set_light_state(self, target_ip: str, device_id: str, on: bool) -> Dict[str, Any]:
-        """Turns the dLight on or off asynchronously."""
+        """Sets the power state of the dLight.
+
+        Args:
+            target_ip: The IP address of the dLight device.
+            device_id: The ID of the dLight device.
+            on: True to turn the light on, False to turn it off.
+
+        Returns:
+            The response from the device.
+        """
         _LOGGER.info(f"Setting light state for {device_id} at {target_ip} to {'ON' if on else 'OFF'}")
         command = {
             "commandId": self._generate_command_id(),
@@ -273,7 +279,19 @@ class AsyncDLightClient:
         return await self._async_send_tcp_command(target_ip, command)
 
     async def set_brightness(self, target_ip: str, device_id: str, brightness: int) -> Dict[str, Any]:
-        """Sets the brightness of the dLight asynchronously (0-100)."""
+        """Sets the brightness of the dLight.
+
+        Args:
+            target_ip: The IP address of the dLight device.
+            device_id: The ID of the dLight device.
+            brightness: The desired brightness level, from 0 to 100.
+
+        Returns:
+            The response from the device.
+
+        Raises:
+            ValueError: If the brightness is not in the range [0, 100].
+        """
         if not 0 <= brightness <= 100:
             raise ValueError("Brightness must be between 0 and 100")
         _LOGGER.info(f"Setting brightness for {device_id} at {target_ip} to {brightness}%")
@@ -286,7 +304,20 @@ class AsyncDLightClient:
         return await self._async_send_tcp_command(target_ip, command)
 
     async def set_color_temperature(self, target_ip: str, device_id: str, temperature: int) -> Dict[str, Any]:
-        """Sets the color temperature of the dLight asynchronously (2600-6000K)."""
+        """Sets the color temperature of the dLight.
+
+        Args:
+            target_ip: The IP address of the dLight device.
+            device_id: The ID of the dLight device.
+            temperature: The desired color temperature in Kelvin, from 2600 to
+                6000.
+
+        Returns:
+            The response from the device.
+
+        Raises:
+            ValueError: If the temperature is not in the range [2600, 6000].
+        """
         if not 2600 <= temperature <= 6000:
             raise ValueError("Color temperature must be between 2600 and 6000 Kelvin")
         _LOGGER.info(f"Setting color temp for {device_id} at {target_ip} to {temperature}K")
@@ -299,7 +330,15 @@ class AsyncDLightClient:
         return await self._async_send_tcp_command(target_ip, command)
 
     async def query_device_state(self, target_ip: str, device_id: str) -> Dict[str, Any]:
-        """Queries the current state of the dLight asynchronously."""
+        """Queries the current state of the dLight.
+
+        Args:
+            target_ip: The IP address of the dLight device.
+            device_id: The ID of the dLight device.
+
+        Returns:
+            The response from the device, containing its current state.
+        """
         _LOGGER.info(f"Querying state for {device_id} at {target_ip}")
         command = {
             "commandId": self._generate_command_id(),
@@ -310,7 +349,15 @@ class AsyncDLightClient:
         return await self._async_send_tcp_command(target_ip, command)
 
     async def query_device_info(self, target_ip: str, device_id: str) -> Dict[str, Any]:
-        """Queries the device information of the dLight asynchronously."""
+        """Queries the device information of the dLight.
+
+        Args:
+            target_ip: The IP address of the dLight device.
+            device_id: The ID of the dLight device.
+
+        Returns:
+            The response from the device, containing its information.
+        """
         _LOGGER.info(f"Querying info for {device_id} at {target_ip}")
         command = {
             "commandId": self._generate_command_id(),
@@ -328,25 +375,23 @@ class AsyncDLightClient:
         target_ip: str = FACTORY_RESET_IP,
         port: int = DEFAULT_TCP_PORT
     ) -> Dict[str, Any]:
-        """
-        Sends the SSID_CONNECT command for direct Wi-Fi provisioning.
+        """Sends Wi-Fi credentials to a dLight device.
 
-        This typically requires the device to be in SoftAP mode (factory reset state)
-        and the client machine to be connected to that SoftAP network.
+        This method is used to provision a dLight device with Wi-Fi credentials,
+        typically when the device is in SoftAP mode.
 
         Args:
-            device_id: The ID of the device (often part of the SoftAP SSID).
-            ssid: The SSID of the target Wi-Fi network to connect to.
-            password: The password for the target Wi-Fi network.
-            target_ip: The IP address of the device in SoftAP mode (defaults to FACTORY_RESET_IP).
-            port: The TCP port to use (defaults to DEFAULT_TCP_PORT).
+            device_id: The ID of the dLight device.
+            ssid: The SSID of the target Wi-Fi network.
+            password: The password of the target Wi-Fi network.
+            target_ip: The IP address of the device in SoftAP mode.
+            port: The TCP port to use.
 
         Returns:
-            The response dictionary from the device.
+            The response from the device.
 
         Raises:
-            DLightCommandError: If the command fails specifically during this operation.
-            Other DLight errors (Connection, Timeout, Response) via _async_send_tcp_command.
+            DLightCommandError: If the command fails during this operation.
         """
         _LOGGER.info(f"Sending Wi-Fi credentials (SSID: {ssid}) to device {device_id} at {target_ip}:{port}")
         command = {
