@@ -324,6 +324,75 @@ class TestDLightDevice(unittest.IsolatedAsyncioTestCase):
         # self.mock_client.set_color_temperature.assert_not_awaited() # This depends on exact finally logic
 
 
+@unittest.skipIf(not _IMPORT_SUCCESS, "Skipping device caching tests due to import failure.")
+class TestDLightDeviceCaching(unittest.IsolatedAsyncioTestCase):
+    """Tests for the DLightDevice state caching behavior."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.test_ip = "192.168.1.55"
+        self.test_id = "test-device-id-123"
+        self.mock_client = AsyncMock(spec=AsyncDLightClient)
+        self.device = DLightDevice(self.test_ip, self.test_id, self.mock_client)
+
+    async def test_get_state_caching(self):
+        """Test that get_state caches the result."""
+        state_dict = {"on": True, "brightness": 60}
+        self.mock_client.query_device_state.return_value = {"status": STATUS_SUCCESS, "states": state_dict}
+
+        # First call should query the client
+        res1 = await self.device.get_state()
+        self.assertEqual(res1, state_dict)
+        self.mock_client.query_device_state.assert_awaited_once()
+
+        # Second call should return cached data
+        res2 = await self.device.get_state()
+        self.assertEqual(res2, state_dict)
+        # Should still be once
+        self.mock_client.query_device_state.assert_awaited_once()
+
+    async def test_get_state_force_update(self):
+        """Test that force_update=True bypasses the cache."""
+        state_dict = {"on": True, "brightness": 60}
+        self.mock_client.query_device_state.return_value = {"status": STATUS_SUCCESS, "states": state_dict}
+
+        await self.device.get_state()
+        self.mock_client.query_device_state.assert_awaited_once()
+
+        # Force update should query again
+        await self.device.get_state(force_update=True)
+        self.assertEqual(self.mock_client.query_device_state.await_count, 2)
+
+    async def test_control_updates_cache(self):
+        """Test that control methods update the cache."""
+        # Initial empty cache
+        self.assertEqual(self.device._state, {})
+
+        # turn_on
+        self.mock_client.set_light_state.return_value = {"status": STATUS_SUCCESS}
+        await self.device.turn_on()
+        self.assertEqual(self.device._state.get('on'), True)
+
+        # turn_off
+        await self.device.turn_off()
+        self.assertEqual(self.device._state.get('on'), False)
+
+        # set_brightness
+        self.mock_client.set_brightness.return_value = {"status": STATUS_SUCCESS}
+        await self.device.set_brightness(42)
+        self.assertEqual(self.device._state.get('brightness'), 42)
+
+        # set_color_temperature
+        self.mock_client.set_color_temperature.return_value = {"status": STATUS_SUCCESS}
+        await self.device.set_color_temperature(3000)
+        self.assertEqual(self.device._state.get('color', {}).get('temperature'), 3000)
+
+        # Subsequent get_state should use this cache
+        res = await self.device.get_state()
+        self.assertEqual(res['brightness'], 42)
+        self.mock_client.query_device_state.assert_not_awaited()
+
+
 # --- Test Class specifically for AsyncDLightClient error handling ---
 # Patch asyncio.open_connection where it's used: inside the client module
 @unittest.skipIf(not _IMPORT_SUCCESS, "Skipping client tests due to import failure.")

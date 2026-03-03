@@ -40,6 +40,7 @@ class DLightDevice:
         self._ip = ip_address
         self._id = device_id
         self._client = client
+        self._state: Dict[str, Any] = {}
         _LOGGER.debug(f"DLightDevice initialized: ID='{self._id}', IP='{self._ip}'")
 
     @property
@@ -59,7 +60,9 @@ class DLightDevice:
             The response from the device.
         """
         _LOGGER.info(f"Device {self.id}: Turning ON")
-        return await self._client.set_light_state(self.ip, self.id, True)
+        resp = await self._client.set_light_state(self.ip, self.id, True)
+        self._state['on'] = True
+        return resp
 
     async def turn_off(self) -> Dict[str, Any]:
         """Turns the light off.
@@ -68,7 +71,9 @@ class DLightDevice:
             The response from the device.
         """
         _LOGGER.info(f"Device {self.id}: Turning OFF")
-        return await self._client.set_light_state(self.ip, self.id, False)
+        resp = await self._client.set_light_state(self.ip, self.id, False)
+        self._state['on'] = False
+        return resp
 
     async def set_brightness(self, brightness: int) -> Dict[str, Any]:
         """Sets the brightness of the light.
@@ -83,7 +88,9 @@ class DLightDevice:
             ValueError: If brightness is outside the valid range [0, 100].
         """
         _LOGGER.info(f"Device {self.id}: Setting brightness to {brightness}%")
-        return await self._client.set_brightness(self.ip, self.id, brightness)
+        resp = await self._client.set_brightness(self.ip, self.id, brightness)
+        self._state['brightness'] = brightness
+        return resp
 
     async def set_color_temperature(self, temperature: int) -> Dict[str, Any]:
         """Sets the color temperature of the light.
@@ -98,21 +105,32 @@ class DLightDevice:
             ValueError: If temperature is outside the valid range [2600, 6000].
         """
         _LOGGER.info(f"Device {self.id}: Setting color temperature to {temperature}K")
-        return await self._client.set_color_temperature(self.ip, self.id, temperature)
+        resp = await self._client.set_color_temperature(self.ip, self.id, temperature)
+        if 'color' not in self._state or not isinstance(self._state['color'], dict):
+            self._state['color'] = {}
+        self._state['color']['temperature'] = temperature
+        return resp
 
-    async def get_state(self) -> Dict[str, Any]:
+    async def get_state(self, force_update: bool = False) -> Dict[str, Any]:
         """Queries and returns the current state of the light.
+
+        Args:
+            force_update: If True, bypasses the local cache and queries the device.
 
         Returns:
             A dictionary representing the device's state (e.g.,
             `{'on': True, 'brightness': 50}`). Returns an empty dict if the
             state cannot be retrieved or is missing from the response.
         """
+        if not force_update and self._state:
+            _LOGGER.debug(f"Device {self.id}: Returning cached state")
+            return self._state
+
         _LOGGER.debug(f"Device {self.id}: Querying state")
         response = await self._client.query_device_state(self.ip, self.id)
-        state_data = response.get('states', {})
-        _LOGGER.debug(f"Device {self.id}: Received state: {state_data}")
-        return state_data
+        self._state = response.get('states', {})
+        _LOGGER.debug(f"Device {self.id}: Received state: {self._state}")
+        return self._state
 
     async def get_info(self) -> Dict[str, Any]:
         """Queries and returns device information.
