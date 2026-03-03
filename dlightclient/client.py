@@ -135,13 +135,13 @@ class AsyncDLightClient:
         # 1. Serialize command to JSON bytes
         try:
             json_data = json.dumps(command).encode("utf-8")
-            
+
             # Mask sensitive data in logs
             log_command = command
             if "password" in command:
                 log_command = command.copy()
                 log_command["password"] = "********"
-            
+
             _LOGGER.debug(f"Serialized command ({len(json_data)} bytes): {json.dumps(log_command)!r}")
         except TypeError as e:
             raise DLightCommandError(f"Failed to serialize command to JSON: {e}\nCommand: {command}") from e
