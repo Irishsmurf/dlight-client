@@ -13,7 +13,6 @@ from .constants import (
     DEFAULT_UDP_RESPONSE_PORT,
     UDP_DISCOVERY_PAYLOAD_HEX,
     BROADCAST_ADDRESS,
-    _LOGGER,
 )
 
 # Logger specific to discovery, inheriting from the base logger if needed
@@ -33,6 +32,7 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
         results_list: A list to append the information of newly discovered
             devices to.
     """
+
     def __init__(self, discovered_devices_set: Set[str], results_list: List[Dict]):
         self.transport: Optional[asyncio.DatagramTransport] = None
         self.discovered_devices_set = discovered_devices_set
@@ -54,10 +54,9 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
 
         try:
             # Attempt to decode JSON, add IP address
-            device_info = json.loads(data.decode('utf-8'))
-            device_info['ip_address'] = ip_address # Add IP to the result dict
-            _LOGGER.info("Discovered dLight: %s at %s",
-                         device_info.get('deviceId', 'Unknown ID'), ip_address)
+            device_info = json.loads(data.decode("utf-8"))
+            device_info["ip_address"] = ip_address  # Add IP to the result dict
+            _LOGGER.info("Discovered dLight: %s at %s", device_info.get("deviceId", "Unknown ID"), ip_address)
             _LOGGER.debug("Full discovery info from %s: %s", ip_address, device_info)
 
             # Add to results if successfully parsed
@@ -65,11 +64,9 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
             self.results_list.append(device_info)
 
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            _LOGGER.warning("Error decoding discovery response from %s: %s. Raw data: %r",
-                            ip_address, e, data)
-        except Exception as e:
-             _LOGGER.exception("Unexpected error processing datagram from %s", ip_address)
-
+            _LOGGER.warning("Error decoding discovery response from %s: %s. Raw data: %r", ip_address, e, data)
+        except Exception:
+            _LOGGER.exception("Unexpected error processing datagram from %s", ip_address)
 
     def error_received(self, exc: Exception):
         # This is called for ICMP errors etc.
@@ -87,7 +84,7 @@ async def discover_devices(
     discovery_duration: float = 3.0,
     response_port: int = DEFAULT_UDP_RESPONSE_PORT,
     discovery_port: int = DEFAULT_UDP_DISCOVERY_PORT,
-    broadcast_address: str = BROADCAST_ADDRESS
+    broadcast_address: str = BROADCAST_ADDRESS,
 ) -> List[Dict[str, Any]]:
     """Discovers dLight devices on the local network using UDP broadcast.
 
@@ -117,14 +114,14 @@ async def discover_devices(
         try:
             probe_payload = binascii.unhexlify(UDP_DISCOVERY_PAYLOAD_HEX)
         except binascii.Error as e:
-             _LOGGER.error(f"Internal error: failed to decode UDP probe payload hex: {e}")
-             return [] # Cannot proceed without payload
+            _LOGGER.error(f"Internal error: failed to decode UDP probe payload hex: {e}")
+            return []  # Cannot proceed without payload
 
         # 1. Create the listening endpoint
         # Need await as create_datagram_endpoint is a coroutine
         listen_transport, _ = await loop.create_datagram_endpoint(
             lambda: _DiscoveryProtocol(discovered_devices_set, results_list),
-            local_addr=('0.0.0.0', response_port),
+            local_addr=("0.0.0.0", response_port),
             # allow_broadcast=False # Not needed for listener
         )
         _LOGGER.debug(f"Listening for discovery responses on 0.0.0.0:{response_port}")
@@ -132,25 +129,26 @@ async def discover_devices(
         # 2. Create a separate sending endpoint for broadcast
         # Need await here too
         send_transport, _ = await loop.create_datagram_endpoint(
-            lambda: asyncio.DatagramProtocol(), # Simple protocol for sending only
+            lambda: asyncio.DatagramProtocol(),  # Simple protocol for sending only
             remote_addr=(broadcast_address, discovery_port),
-            allow_broadcast=True # Request broadcast permission
+            allow_broadcast=True,  # Request broadcast permission
         )
 
         # Enable broadcasting on the sending socket (best effort, might be redundant
         # if allow_broadcast=True worked, but good practice)
-        sending_socket = send_transport.get_extra_info('socket')
+        sending_socket = send_transport.get_extra_info("socket")
         if sending_socket and isinstance(sending_socket, socket.socket):
-             try:
-                 sending_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-                 _LOGGER.debug("Broadcast explicitly enabled for sending socket.")
-             except OSError as e:
-                  # May fail if allow_broadcast=True wasn't enough or OS restricts
-                  _LOGGER.warning(f"Could not enable broadcast on sending socket: {e}. "
-                                  "Discovery might fail if allow_broadcast=True was insufficient.")
+            try:
+                sending_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                _LOGGER.debug("Broadcast explicitly enabled for sending socket.")
+            except OSError as e:
+                # May fail if allow_broadcast=True wasn't enough or OS restricts
+                _LOGGER.warning(
+                    f"Could not enable broadcast on sending socket: {e}. "
+                    "Discovery might fail if allow_broadcast=True was insufficient."
+                )
         else:
-             _LOGGER.warning("Could not get underlying socket for sending transport to enable broadcast.")
-
+            _LOGGER.warning("Could not get underlying socket for sending transport to enable broadcast.")
 
         # 3. Send the broadcast probe
         _LOGGER.info(f"Sending discovery probe to {broadcast_address}:{discovery_port}")
@@ -164,14 +162,18 @@ async def discover_devices(
 
     except PermissionError as e:
         # Common issue if not running with sufficient privileges for broadcast/bind
-        _LOGGER.error(f"Permission denied for UDP broadcast or binding to port {response_port}. "
-                      f"Try running with higher privileges if necessary. Error: {e}")
+        _LOGGER.error(
+            f"Permission denied for UDP broadcast or binding to port {response_port}. "
+            f"Try running with higher privileges if necessary. Error: {e}"
+        )
         return []
     except OSError as e:
-         # Common issue if port is already in use or network interface issue
-         _LOGGER.error(f"Network error during discovery (e.g., port {response_port} in use, "
-                       f"or cannot bind/broadcast on network): {e}")
-         return []
+        # Common issue if port is already in use or network interface issue
+        _LOGGER.error(
+            f"Network error during discovery (e.g., port {response_port} in use, "
+            f"or cannot bind/broadcast on network): {e}"
+        )
+        return []
     except Exception as e:
         # Catch any other unexpected errors during setup or sleep
         _LOGGER.exception(f"An unexpected error occurred during async discovery: {e}")
@@ -179,11 +181,11 @@ async def discover_devices(
     finally:
         # 5. Clean up transports
         if send_transport:
-             try:
-                 send_transport.close()
-                 _LOGGER.debug("Discovery sender transport closed.")
-             except Exception as e_close:
-                 _LOGGER.debug(f"Error closing send transport: {e_close}")
+            try:
+                send_transport.close()
+                _LOGGER.debug("Discovery sender transport closed.")
+            except Exception as e_close:
+                _LOGGER.debug(f"Error closing send transport: {e_close}")
         if listen_transport:
             try:
                 listen_transport.close()
@@ -192,4 +194,3 @@ async def discover_devices(
                 _LOGGER.debug(f"Error closing listen transport: {e_close}")
 
     return results_list
-

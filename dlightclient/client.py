@@ -2,13 +2,12 @@
 """Core AsyncDLightClient for TCP communication with dLight devices."""
 
 import asyncio
-import socket # For specific error types like ConnectionRefusedError
 import json
 import struct
 import time
 import uuid
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 
 # Import constants and exceptions from within the package
 from .constants import (
@@ -21,7 +20,6 @@ from .constants import (
     COMMAND_TYPE_QUERY_DEVICE_INFO,
     COMMAND_TYPE_SSID_CONNECT,
     STATUS_SUCCESS,
-    _LOGGER, # Use the logger defined in constants or define one here
 )
 from .exceptions import (
     DLightError,
@@ -88,10 +86,7 @@ class AsyncDLightClient:
         return f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
 
     async def _async_send_tcp_command(
-        self,
-        target_ip: str,
-        command: Dict[str, Any],
-        port: int = DEFAULT_TCP_PORT
+        self, target_ip: str, command: Dict[str, Any], port: int = DEFAULT_TCP_PORT
     ) -> Dict[str, Any]:
         """Sends a command to a dLight device and returns the response.
 
@@ -119,13 +114,13 @@ class AsyncDLightClient:
         writer: Optional[asyncio.StreamWriter] = None
         operation = f"command {command.get('commandType', 'UNKNOWN')} to {target_ip}:{port}"
         _LOGGER.debug(f"Preparing {operation}")
-        json_data: bytes = b'' # Store serialized command for echo check
+        json_data: bytes = b""  # Store serialized command for echo check
         key = f"{target_ip}:{port}"
 
         try:
             # 1. Serialize command to JSON bytes
             try:
-                json_data = json.dumps(command).encode('utf-8')
+                json_data = json.dumps(command).encode("utf-8")
                 _LOGGER.debug(f"Serialized command ({len(json_data)} bytes): {json_data!r}")
             except TypeError as e:
                 raise DLightCommandError(f"Failed to serialize command to JSON: {e}\nCommand: {command}") from e
@@ -147,16 +142,16 @@ class AsyncDLightClient:
                 try:
                     connect_future = asyncio.open_connection(target_ip, port)
                     reader, writer = await asyncio.wait_for(connect_future, timeout=self.default_timeout)
-                    peername = writer.get_extra_info('peername')
+                    peername = writer.get_extra_info("peername")
                     _LOGGER.debug(f"Connection established to {peername}")
                     if self.persistent:
                         self._connections[key] = (reader, writer, time.time())
                 except asyncio.TimeoutError:
-                     raise DLightTimeoutError(f"Timeout connecting to {target_ip}:{port}") from None
+                    raise DLightTimeoutError(f"Timeout connecting to {target_ip}:{port}") from None
                 except ConnectionRefusedError as e:
-                     raise DLightConnectionError(f"Connection refused by {target_ip}:{port}") from e
+                    raise DLightConnectionError(f"Connection refused by {target_ip}:{port}") from e
                 except OSError as e:
-                     raise DLightConnectionError(f"Network error connecting to {target_ip}:{port}: {e}") from e
+                    raise DLightConnectionError(f"Network error connecting to {target_ip}:{port}: {e}") from e
 
             # 3. Send command data with timeout
             _LOGGER.debug(f"Sending {len(json_data)} bytes for {operation}")
@@ -165,76 +160,84 @@ class AsyncDLightClient:
                 await asyncio.wait_for(writer.drain(), timeout=self.default_timeout)
                 _LOGGER.debug("Data sent and drained.")
             except asyncio.TimeoutError:
-                 raise DLightTimeoutError(f"Timeout sending data for {operation}") from None
+                raise DLightTimeoutError(f"Timeout sending data for {operation}") from None
             except OSError as e:
-                 if key in self._connections: del self._connections[key]
-                 raise DLightConnectionError(f"Network error sending data for {operation}: {e}") from e
+                if key in self._connections:
+                    del self._connections[key]
+                raise DLightConnectionError(f"Network error sending data for {operation}: {e}") from e
 
             # 4. Read response header (4 bytes) with timeout
             _LOGGER.debug(f"Reading header (4 bytes) for {operation}")
-            header = b''
+            header = b""
             try:
                 header = await asyncio.wait_for(reader.readexactly(4), timeout=self.default_timeout)
                 _LOGGER.debug(f"Received header: {header!r} (Hex: {header.hex()})")
             except asyncio.TimeoutError:
-                 raise DLightTimeoutError(f"Timeout reading header for {operation}") from None
+                raise DLightTimeoutError(f"Timeout reading header for {operation}") from None
             except asyncio.IncompleteReadError as e:
-                if key in self._connections: del self._connections[key]
+                if key in self._connections:
+                    del self._connections[key]
                 raise DLightResponseError(
                     f"Connection closed unexpectedly while reading header for {operation}. "
                     f"Expected 4 bytes, got {len(e.partial)}: {e.partial!r}"
                 ) from e
             except OSError as e:
-                 if key in self._connections: del self._connections[key]
-                 raise DLightConnectionError(f"Network error reading header for {operation}: {e}") from e
+                if key in self._connections:
+                    del self._connections[key]
+                raise DLightConnectionError(f"Network error reading header for {operation}: {e}") from e
 
             # 5. Decode header to get payload length
-            payload_length = struct.unpack('>I', header)[0]
+            payload_length = struct.unpack(">I", header)[0]
             _LOGGER.debug(f"Decoded header, expected payload length: {payload_length}")
 
             # 6. Validate payload length
             if payload_length > MAX_PAYLOAD_SIZE:
-                 raise DLightResponseError(
-                     f"Payload length {payload_length} exceeds maximum limit {MAX_PAYLOAD_SIZE}"
-                 )
+                raise DLightResponseError(f"Payload length {payload_length} exceeds maximum limit {MAX_PAYLOAD_SIZE}")
 
             # 7. Read response payload with timeout
-            payload_bytes = b''
+            payload_bytes = b""
             if payload_length > 0:
                 _LOGGER.debug(f"Reading payload ({payload_length} bytes) for {operation}")
                 try:
                     payload_bytes = await asyncio.wait_for(
-                        reader.readexactly(payload_length),
-                        timeout=self.default_timeout
+                        reader.readexactly(payload_length), timeout=self.default_timeout
                     )
                 except asyncio.TimeoutError:
-                     raise DLightTimeoutError(f"Timeout reading payload ({payload_length} bytes) for {operation}") from None
+                    raise DLightTimeoutError(
+                        f"Timeout reading payload ({payload_length} bytes) for {operation}"
+                    ) from None
                 except asyncio.IncompleteReadError as e:
-                     if key in self._connections: del self._connections[key]
-                     raise DLightResponseError(
-                         f"Connection closed unexpectedly while reading payload for {operation}."
-                     ) from e
+                    if key in self._connections:
+                        del self._connections[key]
+                    raise DLightResponseError(
+                        f"Connection closed unexpectedly while reading payload for {operation}."
+                    ) from e
                 except OSError as e:
-                    if key in self._connections: del self._connections[key]
+                    if key in self._connections:
+                        del self._connections[key]
                     raise DLightConnectionError(f"Network error reading payload for {operation}: {e}") from e
 
             # 8. Deserialize JSON payload
             response: Dict[str, Any] = {}
             if payload_length == 0:
-                 response = {"status": STATUS_SUCCESS, "_payload_length": 0}
+                response = {"status": STATUS_SUCCESS, "_payload_length": 0}
             else:
-                 try:
-                    response = json.loads(payload_bytes.decode('utf-8'))
-                 except json.JSONDecodeError as e:
-                    raise DLightResponseError(f"Failed to decode JSON payload: {e}\nRaw Payload: {payload_bytes!r}") from e
-                 except UnicodeDecodeError as e:
-                    raise DLightResponseError(f"Failed to decode payload as UTF-8: {e}\nRaw Payload: {payload_bytes!r}") from e
-                 except Exception as e:
+                try:
+                    response = json.loads(payload_bytes.decode("utf-8"))
+                except json.JSONDecodeError as e:
+                    raise DLightResponseError(
+                        f"Failed to decode JSON payload: {e}\nRaw Payload: {payload_bytes!r}"
+                    ) from e
+                except UnicodeDecodeError as e:
+                    raise DLightResponseError(
+                        f"Failed to decode payload as UTF-8: {e}\nRaw Payload: {payload_bytes!r}"
+                    ) from e
+                except Exception as e:
                     raise DLightResponseError(f"Failed to decode response: {e}") from e
 
             # Check for echoed command
             if payload_length > 0 and response == command:
-                raise DLightResponseError(f"Device echoed back the command (unrecognized?).")
+                raise DLightResponseError("Device echoed back the command (unrecognized?).")
 
             # 9. Check response status
             if response.get("_payload_length") != 0:
@@ -247,8 +250,8 @@ class AsyncDLightClient:
         except DLightError:
             raise
         except Exception as e:
-             _LOGGER.exception(f"An unexpected error occurred during {operation}")
-             raise DLightError(f"An unexpected error occurred during {operation}: {e}") from e
+            _LOGGER.exception(f"An unexpected error occurred during {operation}")
+            raise DLightError(f"An unexpected error occurred during {operation}: {e}") from e
         finally:
             # 10. Close connection if NOT persistent
             if not self.persistent and writer and not writer.is_closing():
@@ -257,7 +260,6 @@ class AsyncDLightClient:
                     await asyncio.wait_for(writer.wait_closed(), timeout=2.0)
                 except Exception:
                     pass
-
 
     # --- Public API Methods (No changes needed below this line) ---
 
@@ -277,7 +279,7 @@ class AsyncDLightClient:
             "commandId": self._generate_command_id(),
             "deviceId": device_id,
             "commandType": COMMAND_TYPE_EXECUTE,
-            "commands": [{"on": bool(on)}] # Ensure boolean
+            "commands": [{"on": bool(on)}],  # Ensure boolean
         }
         return await self._async_send_tcp_command(target_ip, command)
 
@@ -302,7 +304,7 @@ class AsyncDLightClient:
             "commandId": self._generate_command_id(),
             "deviceId": device_id,
             "commandType": COMMAND_TYPE_EXECUTE,
-            "commands": [{"brightness": int(brightness)}] # Ensure integer
+            "commands": [{"brightness": int(brightness)}],  # Ensure integer
         }
         return await self._async_send_tcp_command(target_ip, command)
 
@@ -328,7 +330,7 @@ class AsyncDLightClient:
             "commandId": self._generate_command_id(),
             "deviceId": device_id,
             "commandType": COMMAND_TYPE_EXECUTE,
-            "commands": [{"color": {"temperature": int(temperature)}}] # Ensure integer
+            "commands": [{"color": {"temperature": int(temperature)}}],  # Ensure integer
         }
         return await self._async_send_tcp_command(target_ip, command)
 
@@ -347,7 +349,7 @@ class AsyncDLightClient:
             "commandId": self._generate_command_id(),
             "deviceId": device_id,
             "commandType": COMMAND_TYPE_QUERY_DEVICE_STATES,
-            "commands": [] # No specific commands needed for query
+            "commands": [],  # No specific commands needed for query
         }
         return await self._async_send_tcp_command(target_ip, command)
 
@@ -366,17 +368,12 @@ class AsyncDLightClient:
             "commandId": self._generate_command_id(),
             "deviceId": device_id,
             "commandType": COMMAND_TYPE_QUERY_DEVICE_INFO,
-            "commands": [] # No specific commands needed for query
+            "commands": [],  # No specific commands needed for query
         }
         return await self._async_send_tcp_command(target_ip, command)
 
     async def connect_to_wifi(
-        self,
-        device_id: str,
-        ssid: str,
-        password: str,
-        target_ip: str = FACTORY_RESET_IP,
-        port: int = DEFAULT_TCP_PORT
+        self, device_id: str, ssid: str, password: str, target_ip: str = FACTORY_RESET_IP, port: int = DEFAULT_TCP_PORT
     ) -> Dict[str, Any]:
         """Sends Wi-Fi credentials to a dLight device.
 
@@ -402,12 +399,11 @@ class AsyncDLightClient:
             "deviceId": device_id,
             "commandType": COMMAND_TYPE_SSID_CONNECT,
             "ssid": ssid,
-            "password": password
+            "password": password,
         }
         try:
-             # Use the specific SoftAP IP and port
-             return await self._async_send_tcp_command(target_ip, command, port=port)
+            # Use the specific SoftAP IP and port
+            return await self._async_send_tcp_command(target_ip, command, port=port)
         except DLightError as e:
-             # Wrap error with specific context for this operation
-             raise DLightCommandError(f"Failed to send SSID_CONNECT command to {target_ip}:{port}: {e}") from e
-
+            # Wrap error with specific context for this operation
+            raise DLightCommandError(f"Failed to send SSID_CONNECT command to {target_ip}:{port}: {e}") from e

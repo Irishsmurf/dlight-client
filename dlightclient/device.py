@@ -11,6 +11,7 @@ from .exceptions import DLightError, DLightTimeoutError, DLightResponseError
 
 _LOGGER = logging.getLogger(__name__)
 
+
 class DLightDevice:
     """Represents and interacts with a single dLight device.
 
@@ -61,7 +62,7 @@ class DLightDevice:
         """
         _LOGGER.info(f"Device {self.id}: Turning ON")
         resp = await self._client.set_light_state(self.ip, self.id, True)
-        self._state['on'] = True
+        self._state["on"] = True
         return resp
 
     async def turn_off(self) -> Dict[str, Any]:
@@ -72,7 +73,7 @@ class DLightDevice:
         """
         _LOGGER.info(f"Device {self.id}: Turning OFF")
         resp = await self._client.set_light_state(self.ip, self.id, False)
-        self._state['on'] = False
+        self._state["on"] = False
         return resp
 
     async def set_brightness(self, brightness: int) -> Dict[str, Any]:
@@ -89,7 +90,7 @@ class DLightDevice:
         """
         _LOGGER.info(f"Device {self.id}: Setting brightness to {brightness}%")
         resp = await self._client.set_brightness(self.ip, self.id, brightness)
-        self._state['brightness'] = brightness
+        self._state["brightness"] = brightness
         return resp
 
     async def set_color_temperature(self, temperature: int) -> Dict[str, Any]:
@@ -106,9 +107,9 @@ class DLightDevice:
         """
         _LOGGER.info(f"Device {self.id}: Setting color temperature to {temperature}K")
         resp = await self._client.set_color_temperature(self.ip, self.id, temperature)
-        if 'color' not in self._state or not isinstance(self._state['color'], dict):
-            self._state['color'] = {}
-        self._state['color']['temperature'] = temperature
+        if "color" not in self._state or not isinstance(self._state["color"], dict):
+            self._state["color"] = {}
+        self._state["color"]["temperature"] = temperature
         return resp
 
     async def get_state(self, force_update: bool = False) -> Dict[str, Any]:
@@ -128,7 +129,7 @@ class DLightDevice:
 
         _LOGGER.debug(f"Device {self.id}: Querying state")
         response = await self._client.query_device_state(self.ip, self.id)
-        self._state = response.get('states', {})
+        self._state = response.get("states", {})
         _LOGGER.debug(f"Device {self.id}: Received state: {self._state}")
         return self._state
 
@@ -175,38 +176,43 @@ class DLightDevice:
         try:
             # 1. Get the current state to restore later
             _LOGGER.debug(f"Device {self.id}: Querying original state for flash...")
-            original_state = await self.get_state() # Use own method
+            original_state = await self.get_state()  # Use own method
 
             if original_state:
-                original_on = original_state.get('on')
-                original_brightness = original_state.get('brightness')
-                original_temperature = original_state.get('color', {}).get('temperature')
-                _LOGGER.debug(f"Device {self.id}: Original state for flash: on={original_on}, brightness={original_brightness}, temp={original_temperature}")
+                original_on = original_state.get("on")
+                original_brightness = original_state.get("brightness")
+                original_temperature = original_state.get("color", {}).get("temperature")
+                _LOGGER.debug(
+                    f"Device {self.id}: Original state for flash: "
+                    f"on={original_on}, brightness={original_brightness}, temp={original_temperature}"
+                )
             else:
-                _LOGGER.warning(f"Device {self.id}: Could not retrieve detailed original state for flash. Will attempt basic restore.")
-                original_on = False # Default assumption if state is missing
+                _LOGGER.warning(
+                    f"Device {self.id}: Could not retrieve detailed original state for flash. "
+                    "Will attempt basic restore."
+                )
+                original_on = False  # Default assumption if state is missing
 
             # 2. Perform the flashing sequence
             _LOGGER.info(f"Device {self.id}: Flashing...")
             for i in range(flashes):
-                _LOGGER.debug(f"Device {self.id}: Flash {i+1}/{flashes}: OFF")
+                _LOGGER.debug(f"Device {self.id}: Flash {i + 1}/{flashes}: OFF")
                 await self.turn_off()
                 await asyncio.sleep(off_duration)
 
-                _LOGGER.debug(f"Device {self.id}: Flash {i+1}/{flashes}: ON")
+                _LOGGER.debug(f"Device {self.id}: Flash {i + 1}/{flashes}: ON")
                 await self.turn_on()
                 await asyncio.sleep(on_duration)
 
             _LOGGER.info(f"Device {self.id}: Flashing sequence complete.")
-            success = True # Mark flashing as successful
+            success = True  # Mark flashing as successful
 
         except (DLightTimeoutError, DLightResponseError, DLightError) as e:
             # Log specific errors from client calls
             _LOGGER.error(f"Device {self.id}: A dLight error occurred during flashing: {e}")
             # Restore will still be attempted in finally block
-        except Exception as e:
+        except Exception:
             _LOGGER.exception(f"Device {self.id}: An unexpected error occurred during flashing")
-            # Restore will still be attempted
         finally:
             # 3. Restore the original state (attempt even if flashing failed)
             if original_state is not None or original_on is not None:
@@ -232,20 +238,22 @@ class DLightDevice:
                             await self.turn_off()
                     else:
                         # Fallback if 'on' state was unknown
-                        _LOGGER.warning(f"Device {self.id}: Original ON/OFF state unknown, leaving light ON after flash.")
+                        _LOGGER.warning(
+                            f"Device {self.id}: Original ON/OFF state unknown, leaving light ON after flash."
+                        )
                         await self.turn_on()
 
                     _LOGGER.info(f"Device {self.id}: Original state restoration attempted.")
 
                 except DLightError as e_restore:
                     _LOGGER.error(f"Device {self.id}: Error restoring original state after flash: {e_restore}")
-                    success = False # Mark overall operation as failed if restore fails
-                except Exception as e_restore:
+                    success = False  # Mark overall operation as failed if restore fails
+                except Exception:
                     _LOGGER.exception(f"Device {self.id}: Unexpected error during state restoration after flash")
                     success = False
             else:
                 _LOGGER.warning(f"Device {self.id}: No original state captured, cannot restore.")
-                success = False # Cannot guarantee original state
+                success = False  # Cannot guarantee original state
 
         return success
 
@@ -256,4 +264,3 @@ class DLightDevice:
     def __str__(self) -> str:
         """Return a user-friendly representation of the device."""
         return f"dLight Device (ID: {self.id}, IP: {self.ip})"
-

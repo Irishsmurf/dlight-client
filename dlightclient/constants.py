@@ -54,4 +54,3 @@ COMMAND_TYPE_SSID_CONNECT = "SSID_CONNECT"
 # Response Status
 STATUS_SUCCESS = "SUCCESS"
 """The status string indicating a successful command execution."""
-

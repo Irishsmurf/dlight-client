@@ -1,6 +1,7 @@
 # dlightclient/exceptions.py
 """Custom exception types for the dlightclient library."""
 
+
 class DLightError(Exception):
     """The base exception for all dlightclient errors."""
 
@@ -19,4 +20,3 @@ class DLightCommandError(DLightError):
 
 class DLightResponseError(DLightError):
     """Raised when a response from a dLight device is invalid or indicates an error."""
-
