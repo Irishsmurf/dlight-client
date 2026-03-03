@@ -94,6 +94,7 @@ async def run_example():
     # The device object is the high-level interface
     device = DLightDevice(ip_address="192.168.1.123", device_id="DL12345", client=client)
 
+    # Simple control commands
     await device.turn_on()
     await device.set_brightness(75)
     
@@ -123,8 +124,8 @@ async with AsyncDLightClient() as client:
 **Option B: Global Persistence**
 ```python
 client = AsyncDLightClient(persistent=True)
-# ... use client ...
-await client.close() # Remember to close explicitly if not using a context manager
+# ... perform operations ...
+await client.close() # Explicitly close when finished
 ```
 
 ### Using the Command-Line Tool (CLI)
@@ -132,34 +133,34 @@ await client.close() # Remember to close explicitly if not using a context manag
 The package includes a basic CLI for common operations.
 
 ```bash
-# Discover devices
+# Discover all devices on the network
 python -m dlightclient.cli --discover
 
-# Interact with a specific device
-python -m dlightclient.cli --ip <IP_ADDRESS> --id <DEVICE_ID>
+# Interact with a specific device using a test sequence
+python -m dlightclient.cli --ip 192.168.1.100 --id DL12345
 ```
 
 ## API Overview
 
-*   **`dlightclient.discovery.discover_devices`**: Uses UDP broadcast to find devices on the network.
-*   **`dlightclient.client.AsyncDLightClient`**: The low-level TCP client. Supports `persistent=True`.
-*   **`dlightclient.device.DLightDevice`**: High-level class. Includes state caching automatically.
-*   **`dlightclient.exceptions`**: Custom exceptions hierarchy rooted in `DLightError`.
+*   `dlightclient.discovery.discover_devices`: Uses UDP broadcast to find devices on the network.
+*   `dlightclient.client.AsyncDLightClient`: The low-level TCP client. Supports `persistent=True`.
+*   `dlightclient.device.DLightDevice`: High-level class. Includes state caching automatically.
+*   `dlightclient.exceptions`: Custom exceptions hierarchy rooted in `DLightError`.
 
 ## Development and Testing
 
 1.  **Set up a virtual environment:**
-    ```sh
+    ```bash
     python -m venv .venv
     source .venv/bin/activate
     ```
 
 2.  **Install in editable mode:**
-    ```sh
+    ```bash
     pip install -e .
     ```
 
 3.  **Run tests:**
-    ```sh
+    ```bash
     python -m unittest discover tests/
     ```
