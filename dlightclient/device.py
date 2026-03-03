@@ -3,7 +3,7 @@
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional
+from typing import Optional
 
 # Import necessary components from the library
 from .client import AsyncDLightClient
