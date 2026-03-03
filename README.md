@@ -26,7 +26,11 @@ This Python package provides an asynchronous (`asyncio`) client library for disc
 *   **High-Level Device Control:** An easy-to-use `DLightDevice` class for object-oriented control of a specific lamp.
 *   **Performance Optimized (New):**
     *   **Persistent TCP Connections:** Reuse connections for sequential commands to reduce latency.
-    *   **State Caching:** Internal cache in `DLightDevice` reduces redundant network queries.
+    *   **Connection Concurrency Safety:** Automatic locking ensures multiple concurrent tasks can share a client safely.
+    *   **Idle Timeout:** Stale connections are automatically closed and refreshed after a period of inactivity (default 60s).
+    *   **State Caching & Optimistic Updates:** Internal cache in `DLightDevice` reduces redundant network queries and provides immediate feedback.
+*   **Developer Friendly:**
+    *   **Structured Models:** Use `TypedDict` models (`DeviceState`, `DeviceInfo`, etc.) for better IDE support and type safety.
 *   **State Control:**
     *   Turn On/Off
     *   Set Brightness (0-100%)

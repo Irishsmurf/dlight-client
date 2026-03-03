@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional
 # Import necessary components from the library
 from .client import AsyncDLightClient
 from .exceptions import DLightError, DLightTimeoutError, DLightResponseError
+from .models import CommandResult, DeviceState, DeviceInfo
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ class DLightDevice:
         self._ip = ip_address
         self._id = device_id
         self._client = client
-        self._state: Dict[str, Any] = {}
+        self._state: DeviceState = {}
         _LOGGER.debug(f"DLightDevice initialized: ID='{self._id}', IP='{self._ip}'")
 
     @property
@@ -54,29 +55,37 @@ class DLightDevice:
         """The unique device ID."""
         return self._id
 
-    async def turn_on(self) -> Dict[str, Any]:
+    async def turn_on(self) -> CommandResult:
         """Turns the light on.
 
         Returns:
             The response from the device.
         """
-        _LOGGER.info(f"Device {self.id}: Turning ON")
-        resp = await self._client.set_light_state(self.ip, self.id, True)
+        _LOGGER.info(f"Device {self.id}: Turning ON (optimistic)")
+        old_on = self._state.get("on")
         self._state["on"] = True
-        return resp
+        try:
+            return await self._client.set_light_state(self.ip, self.id, True)
+        except Exception:
+            self._state["on"] = old_on if old_on is not None else False
+            raise
 
-    async def turn_off(self) -> Dict[str, Any]:
+    async def turn_off(self) -> CommandResult:
         """Turns the light off.
 
         Returns:
             The response from the device.
         """
-        _LOGGER.info(f"Device {self.id}: Turning OFF")
-        resp = await self._client.set_light_state(self.ip, self.id, False)
+        _LOGGER.info(f"Device {self.id}: Turning OFF (optimistic)")
+        old_on = self._state.get("on")
         self._state["on"] = False
-        return resp
+        try:
+            return await self._client.set_light_state(self.ip, self.id, False)
+        except Exception:
+            self._state["on"] = old_on if old_on is not None else True
+            raise
 
-    async def set_brightness(self, brightness: int) -> Dict[str, Any]:
+    async def set_brightness(self, brightness: int) -> CommandResult:
         """Sets the brightness of the light.
 
         Args:
@@ -88,12 +97,19 @@ class DLightDevice:
         Raises:
             ValueError: If brightness is outside the valid range [0, 100].
         """
-        _LOGGER.info(f"Device {self.id}: Setting brightness to {brightness}%")
-        resp = await self._client.set_brightness(self.ip, self.id, brightness)
+        _LOGGER.info(f"Device {self.id}: Setting brightness to {brightness}% (optimistic)")
+        old_brightness = self._state.get("brightness")
         self._state["brightness"] = brightness
-        return resp
+        try:
+            return await self._client.set_brightness(self.ip, self.id, brightness)
+        except Exception:
+            if old_brightness is not None:
+                self._state["brightness"] = old_brightness
+            else:
+                del self._state["brightness"]
+            raise
 
-    async def set_color_temperature(self, temperature: int) -> Dict[str, Any]:
+    async def set_color_temperature(self, temperature: int) -> CommandResult:
         """Sets the color temperature of the light.
 
         Args:
@@ -105,14 +121,30 @@ class DLightDevice:
         Raises:
             ValueError: If temperature is outside the valid range [2600, 6000].
         """
-        _LOGGER.info(f"Device {self.id}: Setting color temperature to {temperature}K")
-        resp = await self._client.set_color_temperature(self.ip, self.id, temperature)
-        if "color" not in self._state or not isinstance(self._state["color"], dict):
-            self._state["color"] = {}
-        self._state["color"]["temperature"] = temperature
-        return resp
+        _LOGGER.info(f"Device {self.id}: Setting color temperature to {temperature}K (optimistic)")
+        
+        # Save old color state for rollback
+        old_color = self._state.get("color")
+        if old_color:
+            # Shallow copy of the dict is enough since temperature is an int
+            old_color = old_color.copy() 
 
-    async def get_state(self, force_update: bool = False) -> Dict[str, Any]:
+        # Optimistic update
+        if "color" not in self._state or not isinstance(self._state["color"], dict):
+            self._state["color"] = {"temperature": temperature}
+        else:
+            self._state["color"]["temperature"] = temperature
+        
+        try:
+            return await self._client.set_color_temperature(self.ip, self.id, temperature)
+        except Exception:
+            if old_color is not None:
+                self._state["color"] = old_color
+            else:
+                del self._state["color"]
+            raise
+
+    async def get_state(self, force_update: bool = False) -> DeviceState:
         """Queries and returns the current state of the light.
 
         Args:
@@ -133,7 +165,7 @@ class DLightDevice:
         _LOGGER.debug(f"Device {self.id}: Received state: {self._state}")
         return self._state
 
-    async def get_info(self) -> Dict[str, Any]:
+    async def get_info(self) -> DeviceInfo:
         """Queries and returns device information.
 
         Returns:
@@ -142,8 +174,8 @@ class DLightDevice:
         """
         _LOGGER.debug(f"Device {self.id}: Querying info")
         info = await self._client.query_device_info(self.ip, self.id)
-        _LOGGER.debug(f"Device {self.id}: Received info: {info}")
-        return info
+        # Casting to DeviceInfo for type safety
+        return DeviceInfo(**info)  # type: ignore
 
     async def flash(
         self,

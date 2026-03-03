@@ -28,6 +28,7 @@ from .exceptions import (
     DLightCommandError,
     DLightResponseError,
 )
+from .models import CommandResult, DeviceState, DeviceInfo
 
 # Logger specific to the client, inheriting from the base logger if needed
 _LOGGER = logging.getLogger(__name__)
@@ -46,6 +47,7 @@ class AsyncDLightClient:
         persistent (bool): If True, TCP connections are kept open for reuse.
         max_retries (int): Number of times to retry a command on network failure.
         retry_backoff (float): Initial backoff duration in seconds for retries.
+        idle_timeout (float): Max time in seconds to reuse an idle connection.
     """
 
     def __init__(
@@ -54,17 +56,19 @@ class AsyncDLightClient:
         persistent: bool = False,
         max_retries: int = 0,
         retry_backoff: float = 0.5,
+        idle_timeout: float = 60.0,
     ):
         """Initializes the AsyncDLightClient."""
         self.default_timeout = default_timeout
         self.persistent = persistent
         self.max_retries = max_retries
         self.retry_backoff = retry_backoff
-        # Key: "ip:port", Value: (reader, writer, last_activity_time)
-        self._connections: Dict[str, Tuple[asyncio.StreamReader, asyncio.StreamWriter, float]] = {}
+        self.idle_timeout = idle_timeout
+        # Key: "ip:port", Value: (reader, writer, last_activity_time, lock)
+        self._connections: Dict[str, Tuple[asyncio.StreamReader, asyncio.StreamWriter, float, asyncio.Lock]] = {}
         _LOGGER.debug(
             f"AsyncDLightClient initialized (timeout: {default_timeout}s, "
-            f"persistent: {persistent}, max_retries: {max_retries})"
+            f"persistent: {persistent}, max_retries: {max_retries}, idle_timeout: {idle_timeout}s)"
         )
 
     async def __aenter__(self):
@@ -81,7 +85,7 @@ class AsyncDLightClient:
         _LOGGER.debug(f"Closing {len(self._connections)} persistent connections")
         keys = list(self._connections.keys())
         for key in keys:
-            _, writer, _ = self._connections.pop(key)
+            _, writer, _, _ = self._connections.pop(key)
             if writer and not writer.is_closing():
                 try:
                     writer.close()
@@ -100,7 +104,7 @@ class AsyncDLightClient:
 
     async def _async_send_tcp_command(
         self, target_ip: str, command: Dict[str, Any], port: int = DEFAULT_TCP_PORT
-    ) -> Dict[str, Any]:
+    ) -> CommandResult:
         """Sends a command to a dLight device and returns the response.
 
         This method establishes a TCP connection (or reuses an existing one),
@@ -135,133 +139,154 @@ class AsyncDLightClient:
         except TypeError as e:
             raise DLightCommandError(f"Failed to serialize command to JSON: {e}\nCommand: {command}") from e
 
+        # Ensure we have a lock for this connection key to avoid concurrent access during setup
+        # Note: In a production environment, you might want to protect self._connections with its own lock
+        # but for this specific scope, we focus on the per-connection atomicity.
         for attempt in range(self.max_retries + 1):
             reader: Optional[asyncio.StreamReader] = None
             writer: Optional[asyncio.StreamWriter] = None
+            lock: Optional[asyncio.Lock] = None
             try:
                 # 2. Get or open connection
                 if key in self._connections:
-                    reader, writer, last_activity = self._connections[key]
-                    if writer.is_closing():
-                        _LOGGER.debug(f"Cached connection for {key} is closing, removing.")
-                        del self._connections[key]
-                        reader, writer = None, None
-                    else:
-                        _LOGGER.debug(f"Reusing persistent connection for {key}")
-                        # Update activity time
-                        self._connections[key] = (reader, writer, time.time())
+                    reader, writer, last_activity, lock = self._connections[key]
+                else:
+                    lock = asyncio.Lock()
 
-                if not reader or not writer:
-                    _LOGGER.debug(f"Opening new connection for {operation} (Attempt {attempt + 1})")
+                async with lock:
+                    if key in self._connections:
+                        # Re-check inside lock in case it changed
+                        reader, writer, last_activity, _ = self._connections[key]
+                        
+                        # Check for idle timeout or if writer is closing
+                        is_idle = time.time() - last_activity > self.idle_timeout
+                        if writer.is_closing() or is_idle:
+                            _LOGGER.debug(
+                                f"Cached connection for {key} is {'idle' if is_idle else 'closing'}, removing."
+                            )
+                            if not writer.is_closing():
+                                try:
+                                    writer.close()
+                                except Exception:
+                                    pass
+                            del self._connections[key]
+                            reader, writer = None, None
+                        else:
+                            _LOGGER.debug(f"Reusing persistent connection for {key}")
+                            # Update activity time
+                            self._connections[key] = (reader, writer, time.time(), lock)
+
+                    if not reader or not writer:
+                        _LOGGER.debug(f"Opening new connection for {operation} (Attempt {attempt + 1})")
+                        try:
+                            connect_future = asyncio.open_connection(target_ip, port)
+                            reader, writer = await asyncio.wait_for(connect_future, timeout=self.default_timeout)
+                            peername = writer.get_extra_info("peername")
+                            _LOGGER.debug(f"Connection established to {peername}")
+                            if self.persistent:
+                                self._connections[key] = (reader, writer, time.time(), lock)
+                        except asyncio.TimeoutError:
+                            raise DLightTimeoutError(f"Timeout connecting to {target_ip}:{port}") from None
+                        except ConnectionRefusedError as e:
+                            raise DLightConnectionError(f"Connection refused by {target_ip}:{port}") from e
+                        except OSError as e:
+                            raise DLightConnectionError(f"Network error connecting to {target_ip}:{port}: {e}") from e
+
+                    # 3. Send command data with timeout
+                    _LOGGER.debug(f"Sending {len(json_data)} bytes for {operation}")
+                    writer.write(json_data)
                     try:
-                        connect_future = asyncio.open_connection(target_ip, port)
-                        reader, writer = await asyncio.wait_for(connect_future, timeout=self.default_timeout)
-                        peername = writer.get_extra_info("peername")
-                        _LOGGER.debug(f"Connection established to {peername}")
-                        if self.persistent:
-                            self._connections[key] = (reader, writer, time.time())
+                        await asyncio.wait_for(writer.drain(), timeout=self.default_timeout)
+                        _LOGGER.debug("Data sent and drained.")
                     except asyncio.TimeoutError:
-                        raise DLightTimeoutError(f"Timeout connecting to {target_ip}:{port}") from None
-                    except ConnectionRefusedError as e:
-                        raise DLightConnectionError(f"Connection refused by {target_ip}:{port}") from e
+                        raise DLightTimeoutError(f"Timeout sending data for {operation}") from None
                     except OSError as e:
-                        raise DLightConnectionError(f"Network error connecting to {target_ip}:{port}: {e}") from e
+                        if key in self._connections:
+                            del self._connections[key]
+                        raise DLightConnectionError(f"Network error sending data for {operation}: {e}") from e
 
-                # 3. Send command data with timeout
-                _LOGGER.debug(f"Sending {len(json_data)} bytes for {operation}")
-                writer.write(json_data)
-                try:
-                    await asyncio.wait_for(writer.drain(), timeout=self.default_timeout)
-                    _LOGGER.debug("Data sent and drained.")
-                except asyncio.TimeoutError:
-                    raise DLightTimeoutError(f"Timeout sending data for {operation}") from None
-                except OSError as e:
-                    if key in self._connections:
-                        del self._connections[key]
-                    raise DLightConnectionError(f"Network error sending data for {operation}: {e}") from e
-
-                # 4. Read response header (4 bytes) with timeout
-                _LOGGER.debug(f"Reading header (4 bytes) for {operation}")
-                header = b""
-                try:
-                    header = await asyncio.wait_for(reader.readexactly(4), timeout=self.default_timeout)
-                    _LOGGER.debug(f"Received header: {header!r} (Hex: {header.hex()})")
-                except asyncio.TimeoutError:
-                    raise DLightTimeoutError(f"Timeout reading header for {operation}") from None
-                except asyncio.IncompleteReadError as e:
-                    if key in self._connections:
-                        del self._connections[key]
-                    raise DLightResponseError(
-                        f"Connection closed unexpectedly while reading header for {operation}. "
-                        f"Expected 4 bytes, got {len(e.partial)}: {e.partial!r}"
-                    ) from e
-                except OSError as e:
-                    if key in self._connections:
-                        del self._connections[key]
-                    raise DLightConnectionError(f"Network error reading header for {operation}: {e}") from e
-
-                # 5. Decode header to get payload length
-                payload_length = struct.unpack(">I", header)[0]
-                _LOGGER.debug(f"Decoded header, expected payload length: {payload_length}")
-
-                # 6. Validate payload length
-                if payload_length > MAX_PAYLOAD_SIZE:
-                    raise DLightResponseError(
-                        f"Payload length {payload_length} exceeds maximum limit {MAX_PAYLOAD_SIZE}"
-                    )
-
-                # 7. Read response payload with timeout
-                payload_bytes = b""
-                if payload_length > 0:
-                    _LOGGER.debug(f"Reading payload ({payload_length} bytes) for {operation}")
+                    # 4. Read response header (4 bytes) with timeout
+                    _LOGGER.debug(f"Reading header (4 bytes) for {operation}")
+                    header = b""
                     try:
-                        payload_bytes = await asyncio.wait_for(
-                            reader.readexactly(payload_length), timeout=self.default_timeout
-                        )
+                        header = await asyncio.wait_for(reader.readexactly(4), timeout=self.default_timeout)
+                        _LOGGER.debug(f"Received header: {header!r} (Hex: {header.hex()})")
                     except asyncio.TimeoutError:
-                        raise DLightTimeoutError(
-                            f"Timeout reading payload ({payload_length} bytes) for {operation}"
-                        ) from None
+                        raise DLightTimeoutError(f"Timeout reading header for {operation}") from None
                     except asyncio.IncompleteReadError as e:
                         if key in self._connections:
                             del self._connections[key]
                         raise DLightResponseError(
-                            f"Connection closed unexpectedly while reading payload for {operation}."
+                            f"Connection closed unexpectedly while reading header for {operation}. "
+                            f"Expected 4 bytes, got {len(e.partial)}: {e.partial!r}"
                         ) from e
                     except OSError as e:
                         if key in self._connections:
                             del self._connections[key]
-                        raise DLightConnectionError(f"Network error reading payload for {operation}: {e}") from e
+                        raise DLightConnectionError(f"Network error reading header for {operation}: {e}") from e
 
-                # 8. Deserialize JSON payload
-                response: Dict[str, Any] = {}
-                if payload_length == 0:
-                    response = {"status": STATUS_SUCCESS, "_payload_length": 0}
-                else:
-                    try:
-                        response = json.loads(payload_bytes.decode("utf-8"))
-                    except json.JSONDecodeError as e:
+                    # 5. Decode header to get payload length
+                    payload_length = struct.unpack(">I", header)[0]
+                    _LOGGER.debug(f"Decoded header, expected payload length: {payload_length}")
+
+                    # 6. Validate payload length
+                    if payload_length > MAX_PAYLOAD_SIZE:
                         raise DLightResponseError(
-                            f"Failed to decode JSON payload: {e}\nRaw Payload: {payload_bytes!r}"
-                        ) from e
-                    except UnicodeDecodeError as e:
-                        raise DLightResponseError(
-                            f"Failed to decode payload as UTF-8: {e}\nRaw Payload: {payload_bytes!r}"
-                        ) from e
-                    except Exception as e:
-                        raise DLightResponseError(f"Failed to decode response: {e}") from e
+                            f"Payload length {payload_length} exceeds maximum limit {MAX_PAYLOAD_SIZE}"
+                        )
 
-                # Check for echoed command
-                if payload_length > 0 and response == command:
-                    raise DLightResponseError("Device echoed back the command (unrecognized?).")
+                    # 7. Read response payload with timeout
+                    payload_bytes = b""
+                    if payload_length > 0:
+                        _LOGGER.debug(f"Reading payload ({payload_length} bytes) for {operation}")
+                        try:
+                            payload_bytes = await asyncio.wait_for(
+                                reader.readexactly(payload_length), timeout=self.default_timeout
+                            )
+                        except asyncio.TimeoutError:
+                            raise DLightTimeoutError(
+                                f"Timeout reading payload ({payload_length} bytes) for {operation}"
+                            ) from None
+                        except asyncio.IncompleteReadError as e:
+                            if key in self._connections:
+                                del self._connections[key]
+                            raise DLightResponseError(
+                                f"Connection closed unexpectedly while reading payload for {operation}."
+                            ) from e
+                        except OSError as e:
+                            if key in self._connections:
+                                del self._connections[key]
+                            raise DLightConnectionError(f"Network error reading payload for {operation}: {e}") from e
 
-                # 9. Check response status
-                if response.get("_payload_length") != 0:
-                    status = response.get("status")
-                    if status != STATUS_SUCCESS:
-                        raise DLightResponseError(f"dLight returned non-SUCCESS status: '{status}'")
+                    # 8. Deserialize JSON payload
+                    response: CommandResult = {}
+                    if payload_length == 0:
+                        response = {"status": STATUS_SUCCESS, "_payload_length": 0}
+                    else:
+                        try:
+                            response = json.loads(payload_bytes.decode("utf-8"))
+                        except json.JSONDecodeError as e:
+                            raise DLightResponseError(
+                                f"Failed to decode JSON payload: {e}\nRaw Payload: {payload_bytes!r}"
+                            ) from e
+                        except UnicodeDecodeError as e:
+                            raise DLightResponseError(
+                                f"Failed to decode payload as UTF-8: {e}\nRaw Payload: {payload_bytes!r}"
+                            ) from e
+                        except Exception as e:
+                            raise DLightResponseError(f"Failed to decode response: {e}") from e
 
-                return response
+                    # Check for echoed command
+                    if payload_length > 0 and response == command:
+                        raise DLightResponseError("Device echoed back the command (unrecognized?).")
+
+                    # 9. Check response status
+                    if response.get("_payload_length") != 0:
+                        status = response.get("status")
+                        if status != STATUS_SUCCESS:
+                            raise DLightResponseError(f"dLight returned non-SUCCESS status: '{status}'")
+
+                    return response
 
             except (DLightTimeoutError, DLightConnectionError) as e:
                 # If we have retries left, wait and try again
@@ -301,7 +326,7 @@ class AsyncDLightClient:
 
     # --- Public API Methods (No changes needed below this line) ---
 
-    async def set_light_state(self, target_ip: str, device_id: str, on: bool) -> Dict[str, Any]:
+    async def set_light_state(self, target_ip: str, device_id: str, on: bool) -> CommandResult:
         """Sets the power state of the dLight.
 
         Args:
@@ -321,7 +346,7 @@ class AsyncDLightClient:
         }
         return await self._async_send_tcp_command(target_ip, command)
 
-    async def set_brightness(self, target_ip: str, device_id: str, brightness: int) -> Dict[str, Any]:
+    async def set_brightness(self, target_ip: str, device_id: str, brightness: int) -> CommandResult:
         """Sets the brightness of the dLight.
 
         Args:
@@ -346,7 +371,7 @@ class AsyncDLightClient:
         }
         return await self._async_send_tcp_command(target_ip, command)
 
-    async def set_color_temperature(self, target_ip: str, device_id: str, temperature: int) -> Dict[str, Any]:
+    async def set_color_temperature(self, target_ip: str, device_id: str, temperature: int) -> CommandResult:
         """Sets the color temperature of the dLight.
 
         Args:
@@ -372,7 +397,7 @@ class AsyncDLightClient:
         }
         return await self._async_send_tcp_command(target_ip, command)
 
-    async def query_device_state(self, target_ip: str, device_id: str) -> Dict[str, Any]:
+    async def query_device_state(self, target_ip: str, device_id: str) -> CommandResult:
         """Queries the current state of the dLight.
 
         Args:
@@ -391,7 +416,7 @@ class AsyncDLightClient:
         }
         return await self._async_send_tcp_command(target_ip, command)
 
-    async def query_device_info(self, target_ip: str, device_id: str) -> Dict[str, Any]:
+    async def query_device_info(self, target_ip: str, device_id: str) -> CommandResult:
         """Queries the device information of the dLight.
 
         Args:
@@ -412,7 +437,7 @@ class AsyncDLightClient:
 
     async def connect_to_wifi(
         self, device_id: str, ssid: str, password: str, target_ip: str = FACTORY_RESET_IP, port: int = DEFAULT_TCP_PORT
-    ) -> Dict[str, Any]:
+    ) -> CommandResult:
         """Sends Wi-Fi credentials to a dLight device.
 
         This method is used to provision a dLight device with Wi-Fi credentials,
