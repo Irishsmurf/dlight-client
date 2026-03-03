@@ -122,19 +122,19 @@ class DLightDevice:
             ValueError: If temperature is outside the valid range [2600, 6000].
         """
         _LOGGER.info(f"Device {self.id}: Setting color temperature to {temperature}K (optimistic)")
-        
+
         # Save old color state for rollback
         old_color = self._state.get("color")
         if old_color:
             # Shallow copy of the dict is enough since temperature is an int
-            old_color = old_color.copy() 
+            old_color = old_color.copy()
 
         # Optimistic update
         if "color" not in self._state or not isinstance(self._state["color"], dict):
             self._state["color"] = {"temperature": temperature}
         else:
             self._state["color"]["temperature"] = temperature
-        
+
         try:
             return await self._client.set_color_temperature(self.ip, self.id, temperature)
         except Exception:
@@ -197,7 +197,7 @@ class DLightDevice:
             True if the sequence completed and the original state was restored
             successfully, False otherwise.
         """
-        original_state: Optional[Dict[str, Any]] = None
+        original_state: Optional[DeviceState] = None
         original_on: Optional[bool] = None
         original_brightness: Optional[int] = None
         original_temperature: Optional[int] = None

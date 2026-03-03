@@ -28,7 +28,7 @@ from .exceptions import (
     DLightCommandError,
     DLightResponseError,
 )
-from .models import CommandResult, DeviceState, DeviceInfo
+from .models import CommandResult
 
 # Logger specific to the client, inheriting from the base logger if needed
 _LOGGER = logging.getLogger(__name__)
@@ -140,8 +140,6 @@ class AsyncDLightClient:
             raise DLightCommandError(f"Failed to serialize command to JSON: {e}\nCommand: {command}") from e
 
         # Ensure we have a lock for this connection key to avoid concurrent access during setup
-        # Note: In a production environment, you might want to protect self._connections with its own lock
-        # but for this specific scope, we focus on the per-connection atomicity.
         for attempt in range(self.max_retries + 1):
             reader: Optional[asyncio.StreamReader] = None
             writer: Optional[asyncio.StreamWriter] = None
@@ -157,7 +155,7 @@ class AsyncDLightClient:
                     if key in self._connections:
                         # Re-check inside lock in case it changed
                         reader, writer, last_activity, _ = self._connections[key]
-                        
+
                         # Check for idle timeout or if writer is closing
                         is_idle = time.time() - last_activity > self.idle_timeout
                         if writer.is_closing() or is_idle:
@@ -316,7 +314,6 @@ class AsyncDLightClient:
                 raise DLightError(f"An unexpected error occurred during {operation}: {e}") from e
             finally:
                 # 10. Close connection if NOT persistent AND we are not about to retry
-                # (If we ARE about to retry, we already handled closing in the catch block)
                 if not self.persistent and writer and not writer.is_closing():
                     try:
                         writer.close()
@@ -324,7 +321,7 @@ class AsyncDLightClient:
                     except Exception:
                         pass
 
-    # --- Public API Methods (No changes needed below this line) ---
+    # --- Public API Methods ---
 
     async def set_light_state(self, target_ip: str, device_id: str, on: bool) -> CommandResult:
         """Sets the power state of the dLight.

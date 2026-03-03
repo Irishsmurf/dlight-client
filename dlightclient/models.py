@@ -1,6 +1,6 @@
 """Defines structured data models for dLight device data."""
 
-from typing import TypedDict, Optional, List, Dict, Any
+from typing import TypedDict
 
 
 class ColorState(TypedDict):
