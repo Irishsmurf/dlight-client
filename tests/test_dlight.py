@@ -738,6 +738,79 @@ class TestAsyncDLightClientUDP(unittest.IsolatedAsyncioTestCase):
         mock_sleep.assert_not_awaited() # Should exit before sleep
 
 
+@unittest.skipIf(not _IMPORT_SUCCESS, "Skipping persistence tests due to import failure.")
+@patch(f'{CLIENT_MODULE_PATH}.asyncio.open_connection', new_callable=AsyncMock)
+class TestAsyncDLightClientPersistence(unittest.IsolatedAsyncioTestCase):
+    """Tests connection pooling and persistent connections."""
+
+    def setUp(self):
+        self.target_ip = "192.168.1.100"
+        self.device_id = "testdevice1"
+
+    def _configure_mock_streams(self, mock_open_connection, read_data=None):
+        mock_reader = AsyncMock(spec=asyncio.StreamReader)
+        mock_writer = AsyncMock(spec=asyncio.StreamWriter)
+        mock_open_connection.return_value = (mock_reader, mock_writer)
+        if read_data:
+             if isinstance(read_data, bytes) and len(read_data) >= 4:
+                 header = read_data[:4]
+                 payload = read_data[4:]
+                 mock_reader.readexactly.side_effect = [header, payload, asyncio.IncompleteReadError(b'', None)]
+             else:
+                 mock_reader.readexactly.side_effect = [read_data, asyncio.IncompleteReadError(b'', None)]
+        mock_writer.wait_closed = AsyncMock()
+        mock_writer.is_closing.return_value = False
+        mock_writer.get_extra_info.return_value = (self.target_ip, DEFAULT_TCP_PORT)
+        return mock_reader, mock_writer
+
+    async def test_non_persistent_closes_connection(self, mock_open_connection):
+        """Test that non-persistent client closes connection after each call."""
+        client = AsyncDLightClient(persistent=False)
+        resp_bytes = create_mock_response({"status": STATUS_SUCCESS})
+        _, mock_writer = self._configure_mock_streams(mock_open_connection, read_data=resp_bytes)
+
+        await client.query_device_state(self.target_ip, self.device_id)
+        mock_writer.close.assert_called_once()
+        self.assertEqual(mock_open_connection.await_count, 1)
+
+    async def test_persistent_reuses_connection(self, mock_open_connection):
+        """Test that persistent client reuses connection."""
+        client = AsyncDLightClient(persistent=True)
+        resp_bytes = create_mock_response({"status": STATUS_SUCCESS})
+        _, mock_writer = self._configure_mock_streams(mock_open_connection, read_data=resp_bytes)
+
+        # First call opens connection
+        await client.query_device_state(self.target_ip, self.device_id)
+        self.assertEqual(mock_open_connection.await_count, 1)
+        mock_writer.close.assert_not_called()
+
+        # Second call reuses connection
+        # Reset read side effect for second call
+        mock_open_connection.return_value[0].readexactly.side_effect = [resp_bytes[:4], resp_bytes[4:], asyncio.IncompleteReadError(b'', None)]
+        await client.query_device_state(self.target_ip, self.device_id)
+        self.assertEqual(mock_open_connection.await_count, 1)
+        mock_writer.close.assert_not_called()
+
+        # Close explicitly
+        await client.close()
+        mock_writer.close.assert_called_once()
+
+    async def test_context_manager_persistence(self, mock_open_connection):
+        """Test using client as a context manager for persistence."""
+        resp_bytes = create_mock_response({"status": STATUS_SUCCESS})
+        _, mock_writer = self._configure_mock_streams(mock_open_connection, read_data=resp_bytes)
+
+        async with AsyncDLightClient() as client:
+            await client.query_device_state(self.target_ip, self.device_id)
+            mock_open_connection.return_value[0].readexactly.side_effect = [resp_bytes[:4], resp_bytes[4:], asyncio.IncompleteReadError(b'', None)]
+            await client.query_device_state(self.target_ip, self.device_id)
+            self.assertEqual(mock_open_connection.await_count, 1)
+            mock_writer.close.assert_not_called()
+
+        # Exiting context closes connections
+        mock_writer.close.assert_called_once()
+
+
 if __name__ == '__main__':
     # Configure logging for tests if desired
     # logging.basicConfig(level=logging.DEBUG)
