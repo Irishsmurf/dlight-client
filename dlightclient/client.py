@@ -3,11 +3,12 @@
 
 import asyncio
 import json
+import ssl
 import struct
 import time
 import uuid
 import logging
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, Union
 
 # Import constants and exceptions from within the package
 from .constants import (
@@ -59,7 +60,7 @@ class AsyncDLightClient:
         max_retries: int = 0,
         retry_backoff: float = 0.5,
         idle_timeout: float = 60.0,
-        ssl: Any = None,
+        ssl: Optional[Union[bool, ssl.SSLContext]] = None,
     ):
         """Initializes the AsyncDLightClient."""
         self.default_timeout = default_timeout
@@ -107,7 +108,11 @@ class AsyncDLightClient:
         return f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
 
     async def _async_send_tcp_command(
-        self, target_ip: str, command: Dict[str, Any], port: int = DEFAULT_TCP_PORT, ssl: Any = None
+        self,
+        target_ip: str,
+        command: Dict[str, Any],
+        port: int = DEFAULT_TCP_PORT,
+        ssl: Optional[Union[bool, ssl.SSLContext]] = None,
     ) -> CommandResult:
         """Sends a command to a dLight device and returns the response.
 
@@ -456,7 +461,7 @@ class AsyncDLightClient:
         password: str,
         target_ip: str = FACTORY_RESET_IP,
         port: int = DEFAULT_TCP_PORT,
-        ssl: Any = None,
+        ssl: Optional[Union[bool, ssl.SSLContext]] = None,
     ) -> CommandResult:
         """Sends Wi-Fi credentials to a dLight device.
 
