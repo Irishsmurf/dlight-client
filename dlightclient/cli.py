@@ -4,6 +4,7 @@
 import asyncio
 import logging
 import argparse
+import ssl
 
 from . import (
     AsyncDLightClient,
@@ -197,6 +198,12 @@ async def main():
         help="Automatically interact with the first discovered device (use with --discover).",
     )
     parser.add_argument(
+        "--ssl", action="store_true", help="Enable SSL/TLS for TCP commands."
+    )
+    parser.add_argument(
+        "--insecure", action="store_true", help="Allow unverified SSL certificates (use with --ssl)."
+    )
+    parser.add_argument(
         "-v", "--verbose", action="count", default=0, help="Increase logging verbosity (-v for INFO, -vv for DEBUG)."
     )
 
@@ -215,7 +222,16 @@ async def main():
     else:
         lib_logger.setLevel(logging.WARNING)  # Default library level if not verbose
 
-    client = AsyncDLightClient(default_timeout=args.timeout)
+    # Configure SSL context
+    ssl_context = None
+    if args.ssl:
+        ssl_context = ssl.create_default_context()
+        if args.insecure:
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            log.warning("SSL verification disabled (--insecure).")
+
+    client = AsyncDLightClient(default_timeout=args.timeout, ssl=ssl_context)
     discovered_devices_info = []  # Store discovery results if needed
 
     if args.discover:

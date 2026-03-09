@@ -182,7 +182,7 @@ class TestDLightCLI(unittest.IsolatedAsyncioTestCase):
             await cli.main()
 
         # Assert Client was instantiated correctly
-        MockAsyncClient.assert_called_once_with(default_timeout=test_timeout)
+        MockAsyncClient.assert_called_once_with(default_timeout=test_timeout, ssl=None)
         # Assert Device was instantiated correctly
         MockDevice.assert_called_once_with(ip_address=test_ip, device_id=test_id, client=mock_client_instance)
         # Assert methods on the device instance were called
@@ -212,7 +212,7 @@ class TestDLightCLI(unittest.IsolatedAsyncioTestCase):
             await cli.main()
 
         mock_discover.assert_awaited_once()
-        MockAsyncClient.assert_called_once()  # Default timeout
+        MockAsyncClient.assert_called_once_with(default_timeout=5.0, ssl=None)  # Default timeout
         # Assert run_interaction was called with the correct client and details
         mock_run_interaction.assert_awaited_once_with(mock_client_instance, dev1_ip, dev1_id)
 
@@ -269,7 +269,7 @@ class TestDLightCLI(unittest.IsolatedAsyncioTestCase):
         with patch.object(sys, "argv", test_argv):
             await cli.main()
 
-        MockAsyncClient.assert_called_once()  # Default timeout
+        MockAsyncClient.assert_called_once_with(default_timeout=5.0, ssl=None)  # Default timeout
         mock_client_instance.connect_to_wifi.assert_awaited_once_with(test_id, test_ssid, test_pw)
 
     async def test_cli_wifi_connect_missing_args(self):

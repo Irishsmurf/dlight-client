@@ -4,10 +4,11 @@
 import asyncio
 import json
 import secrets
+import ssl
 import struct
 import time
 import logging
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, Union
 
 # Import constants and exceptions from within the package
 from .constants import (
@@ -48,6 +49,8 @@ class AsyncDLightClient:
         max_retries (int): Number of times to retry a command on network failure.
         retry_backoff (float): Initial backoff duration in seconds for retries.
         idle_timeout (float): Max time in seconds to reuse an idle connection.
+        ssl (bool | ssl.SSLContext): If True, use default SSL context. If an
+            SSLContext is provided, use it. If False or None, use plaintext.
     """
 
     def __init__(
@@ -57,6 +60,7 @@ class AsyncDLightClient:
         max_retries: int = 0,
         retry_backoff: float = 0.5,
         idle_timeout: float = 60.0,
+        ssl: Optional[Union[bool, ssl.SSLContext]] = None,
     ):
         """Initializes the AsyncDLightClient."""
         self.default_timeout = default_timeout
@@ -64,6 +68,7 @@ class AsyncDLightClient:
         self.max_retries = max_retries
         self.retry_backoff = retry_backoff
         self.idle_timeout = idle_timeout
+        self.ssl = ssl
         # Key: "ip:port", Value: (reader, writer, last_activity_time, lock)
         self._connections: Dict[str, Tuple[asyncio.StreamReader, asyncio.StreamWriter, float, asyncio.Lock]] = {}
         _LOGGER.debug(
@@ -103,7 +108,11 @@ class AsyncDLightClient:
         return f"{int(time.time() * 1000)}_{secrets.token_hex(4)}"
 
     async def _async_send_tcp_command(
-        self, target_ip: str, command: Dict[str, Any], port: int = DEFAULT_TCP_PORT
+        self,
+        target_ip: str,
+        command: Dict[str, Any],
+        port: int = DEFAULT_TCP_PORT,
+        ssl: Optional[Union[bool, ssl.SSLContext]] = None,
     ) -> CommandResult:
         """Sends a command to a dLight device and returns the response.
 
@@ -127,24 +136,37 @@ class AsyncDLightClient:
             DLightResponseError: If the response is invalid or indicates an error.
             DLightError: For any other unexpected errors.
         """
-        operation = f"command {command.get('commandType', 'UNKNOWN')} to {target_ip}:{port}"
-        _LOGGER.debug(f"Preparing {operation}")
-        json_data: bytes = b""  # Store serialized command for echo check
-        key = f"{target_ip}:{port}"
+        # If ssl is not provided to the command, use the client's default
+        if ssl is None:
+            ssl = self.ssl
 
-        # 1. Serialize command to JSON bytes
+        operation = f"command {command.get('commandType', 'UNKNOWN')} to {target_ip}:{port}"
+        _LOGGER.debug(f"Preparing {operation} (SSL: {bool(ssl)})")
+        json_data: bytes = b""  # Store serialized command for echo check
+
+        # Construct connection key: "ip:port:ssl_identifier"
+        # If ssl is an SSLContext, use its id() to distinguish between multiple contexts.
+        # This ensures that connections with different SSL configurations are not shared.
+        ssl_identifier = ssl
+        if ssl and not isinstance(ssl, bool):
+            ssl_identifier = f"ctx_{id(ssl)}"
+        key = f"{target_ip}:{port}:{ssl_identifier}"
+
+        # 1. Prepare masked command for logging/errors
+        log_command = command
+        if "password" in command or "ssid" in command:
+            log_command = command.copy()
+            if "password" in log_command:
+                log_command["password"] = "********"
+            if "ssid" in log_command:
+                log_command["ssid"] = "********"
+
+        # 2. Serialize command to JSON bytes
         try:
             json_data = json.dumps(command).encode("utf-8")
-
-            # Mask sensitive data in logs
-            log_command = command
-            if "password" in command:
-                log_command = command.copy()
-                log_command["password"] = "********"
-
             _LOGGER.debug(f"Serialized command ({len(json_data)} bytes): {json.dumps(log_command)!r}")
         except TypeError as e:
-            raise DLightCommandError(f"Failed to serialize command to JSON: {e}\nCommand: {command}") from e
+            raise DLightCommandError(f"Failed to serialize command to JSON: {e}\nCommand: {log_command}") from e
 
         # Ensure we have a lock for this connection key to avoid concurrent access during setup
         for attempt in range(self.max_retries + 1):
@@ -184,7 +206,7 @@ class AsyncDLightClient:
                     if not reader or not writer:
                         _LOGGER.debug(f"Opening new connection for {operation} (Attempt {attempt + 1})")
                         try:
-                            connect_future = asyncio.open_connection(target_ip, port)
+                            connect_future = asyncio.open_connection(target_ip, port, ssl=ssl)
                             reader, writer = await asyncio.wait_for(connect_future, timeout=self.default_timeout)
                             peername = writer.get_extra_info("peername")
                             _LOGGER.debug(f"Connection established to {peername}")
@@ -440,7 +462,13 @@ class AsyncDLightClient:
         return await self._async_send_tcp_command(target_ip, command)
 
     async def connect_to_wifi(
-        self, device_id: str, ssid: str, password: str, target_ip: str = FACTORY_RESET_IP, port: int = DEFAULT_TCP_PORT
+        self,
+        device_id: str,
+        ssid: str,
+        password: str,
+        target_ip: str = FACTORY_RESET_IP,
+        port: int = DEFAULT_TCP_PORT,
+        ssl: Optional[Union[bool, ssl.SSLContext]] = None,
     ) -> CommandResult:
         """Sends Wi-Fi credentials to a dLight device.
 
@@ -453,6 +481,7 @@ class AsyncDLightClient:
             password: The password of the target Wi-Fi network.
             target_ip: The IP address of the device in SoftAP mode.
             port: The TCP port to use.
+            ssl: Optional SSL context to use for this command.
 
         Returns:
             The response from the device.
@@ -460,7 +489,7 @@ class AsyncDLightClient:
         Raises:
             DLightCommandError: If the command fails during this operation.
         """
-        _LOGGER.info(f"Sending Wi-Fi credentials (SSID: {ssid}) to device {device_id} at {target_ip}:{port}")
+        _LOGGER.info(f"Sending Wi-Fi credentials to device {device_id} at {target_ip}:{port}")
         command = {
             "commandId": self._generate_command_id(),
             "deviceId": device_id,
@@ -470,7 +499,7 @@ class AsyncDLightClient:
         }
         try:
             # Use the specific SoftAP IP and port
-            return await self._async_send_tcp_command(target_ip, command, port=port)
+            return await self._async_send_tcp_command(target_ip, command, port=port, ssl=ssl)
         except DLightError as e:
             # Wrap error with specific context for this operation
             raise DLightCommandError(f"Failed to send SSID_CONNECT command to {target_ip}:{port}: {e}") from e

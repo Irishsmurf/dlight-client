@@ -261,7 +261,7 @@ class TestAsyncDLightClientTCP(unittest.IsolatedAsyncioTestCase):
             response = await self.client.set_light_state(self.target_ip, self.device_id, True)  # Use await
 
             # Assertions remain similar, checking mocks were called correctly
-            mock_open_connection.assert_awaited_once_with(self.target_ip, DEFAULT_TCP_PORT)
+            mock_open_connection.assert_awaited_once_with(self.target_ip, DEFAULT_TCP_PORT, ssl=None)
             mock_writer.write.assert_called_once()
             sent_data = mock_writer.write.call_args[0][0]
             sent_cmd = json.loads(sent_data.decode("utf-8"))
@@ -292,7 +292,7 @@ class TestAsyncDLightClientTCP(unittest.IsolatedAsyncioTestCase):
 
             response = await self.client.query_device_state(self.target_ip, self.device_id)
 
-            mock_open_connection.assert_awaited_once_with(self.target_ip, DEFAULT_TCP_PORT)
+            mock_open_connection.assert_awaited_once_with(self.target_ip, DEFAULT_TCP_PORT, ssl=None)
             mock_writer.write.assert_called_once()
             sent_data = mock_writer.write.call_args[0][0]
             sent_cmd = json.loads(sent_data.decode("utf-8"))
@@ -319,7 +319,7 @@ class TestAsyncDLightClientTCP(unittest.IsolatedAsyncioTestCase):
             # Use a command that might plausibly return no payload on success (e.g., set state)
             response = await self.client.set_light_state(self.target_ip, self.device_id, False)
 
-            mock_open_connection.assert_awaited_once_with(self.target_ip, DEFAULT_TCP_PORT)
+            mock_open_connection.assert_awaited_once_with(self.target_ip, DEFAULT_TCP_PORT, ssl=None)
             mock_writer.write.assert_called_once()
             mock_writer.drain.assert_awaited_once()
 
@@ -346,7 +346,7 @@ class TestAsyncDLightClientTCP(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(DLightResponseError, f"Payload length {large_length}.*exceeds maximum limit"):
                 await self.client.query_device_info(self.target_ip, self.device_id)
 
-            mock_open_connection.assert_awaited_once_with(self.target_ip, DEFAULT_TCP_PORT)
+            mock_open_connection.assert_awaited_once_with(self.target_ip, DEFAULT_TCP_PORT, ssl=None)
             mock_writer.write.assert_called_once()
             mock_writer.drain.assert_awaited_once()
 
@@ -380,7 +380,7 @@ class TestAsyncDLightClientTCP(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(DLightResponseError, "Connection closed unexpectedly while reading payload"):
                 await self.client.set_brightness(self.target_ip, self.device_id, 55)
 
-            mock_open_connection.assert_awaited_once_with(self.target_ip, DEFAULT_TCP_PORT)
+            mock_open_connection.assert_awaited_once_with(self.target_ip, DEFAULT_TCP_PORT, ssl=None)
             mock_writer.write.assert_called_once()
             mock_writer.drain.assert_awaited_once()
             # Check readexactly was called for header (4 bytes) and then for payload
@@ -480,7 +480,7 @@ class TestAsyncDLightClientTCP(unittest.IsolatedAsyncioTestCase):
             await self.client.connect_to_wifi(self.device_id, "MySSID", "MyPassword")
 
             # Assert connection was attempted to the FACTORY_RESET_IP
-            mock_open_connection.assert_awaited_once_with(FACTORY_RESET_IP, DEFAULT_TCP_PORT)
+            mock_open_connection.assert_awaited_once_with(FACTORY_RESET_IP, DEFAULT_TCP_PORT, ssl=None)
             mock_writer.close.assert_called_once()
             mock_writer.wait_closed.assert_awaited_once()
 
