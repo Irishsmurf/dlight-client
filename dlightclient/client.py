@@ -4,9 +4,9 @@
 import asyncio
 import json
 import ssl
+import secrets
 import struct
 import time
-import uuid
 import logging
 from typing import Dict, Any, Optional, Tuple, Union
 
@@ -104,8 +104,8 @@ class AsyncDLightClient:
         Returns:
             A unique string to be used as a command ID.
         """
-        # Combines timestamp with a short UUID part for uniqueness
-        return f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+        # Combines timestamp with a short random part for uniqueness
+        return f"{int(time.time() * 1000)}_{secrets.token_hex(4)}"
 
     async def _async_send_tcp_command(
         self,
