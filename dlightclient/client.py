@@ -4,9 +4,9 @@
 import asyncio
 import json
 import ssl
-import secrets
 import struct
 import time
+import uuid
 import logging
 from typing import Dict, Any, Optional, Tuple, Union
 
@@ -104,8 +104,8 @@ class AsyncDLightClient:
         Returns:
             A unique string to be used as a command ID.
         """
-        # Combines timestamp with a short random part for uniqueness
-        return f"{int(time.time() * 1000)}_{secrets.token_hex(4)}"
+        # Combines timestamp with a short UUID part for uniqueness
+        return f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
 
     async def _async_send_tcp_command(
         self,
@@ -143,7 +143,14 @@ class AsyncDLightClient:
         operation = f"command {command.get('commandType', 'UNKNOWN')} to {target_ip}:{port}"
         _LOGGER.debug(f"Preparing {operation} (SSL: {bool(ssl)})")
         json_data: bytes = b""  # Store serialized command for echo check
-        key = f"{target_ip}:{port}:{bool(ssl)}"
+
+        # Construct connection key: "ip:port:ssl_identifier"
+        # If ssl is an SSLContext, use its id() to distinguish between multiple contexts.
+        # This ensures that connections with different SSL configurations are not shared.
+        ssl_identifier = ssl
+        if ssl and not isinstance(ssl, bool):
+            ssl_identifier = f"ctx_{id(ssl)}"
+        key = f"{target_ip}:{port}:{ssl_identifier}"
 
         # 1. Prepare masked command for logging/errors
         log_command = command
