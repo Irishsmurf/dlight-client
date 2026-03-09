@@ -1,10 +1,10 @@
 import unittest
 import asyncio
 import json
-import logging
 import struct
 from unittest.mock import patch, AsyncMock, MagicMock
 from dlightclient import AsyncDLightClient, DLightCommandError, STATUS_SUCCESS
+
 
 class TestSecurityFixes(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
@@ -74,9 +74,9 @@ class TestSecurityFixes(unittest.IsolatedAsyncioTestCase):
         # log_command uses json.dumps too in my test but in code it uses it for DEBUG logging
 
         def side_effect(obj, *args, **kwargs):
-             if obj.get("password") == self.password:
-                 raise TypeError("Serialization failed")
-             return json.dumps(obj, *args, **kwargs)
+            if obj.get("password") == self.password:
+                raise TypeError("Serialization failed")
+            return json.dumps(obj, *args, **kwargs)
 
         mock_json_dumps.side_effect = side_effect
 
@@ -92,6 +92,7 @@ class TestSecurityFixes(unittest.IsolatedAsyncioTestCase):
         error_msg = str(cm.exception)
         self.assertNotIn(self.password, error_msg, "Password should NOT be leaked in DLightCommandError message")
         self.assertIn("********", error_msg, "Password should be masked in DLightCommandError message")
+
 
 if __name__ == "__main__":
     unittest.main()

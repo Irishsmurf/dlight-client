@@ -3,7 +3,6 @@
 
 import asyncio
 import json
-import ssl
 import struct
 import time
 import uuid
