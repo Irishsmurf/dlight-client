@@ -3,7 +3,7 @@
 
 import asyncio
 import json
-import os
+import secrets
 import struct
 import time
 import logging
@@ -100,7 +100,7 @@ class AsyncDLightClient:
             A unique string to be used as a command ID.
         """
         # Combines timestamp with a short random part for uniqueness
-        return f"{int(time.time() * 1000)}_{os.urandom(4).hex()}"
+        return f"{int(time.time() * 1000)}_{secrets.token_hex(4)}"
 
     async def _async_send_tcp_command(
         self, target_ip: str, command: Dict[str, Any], port: int = DEFAULT_TCP_PORT
