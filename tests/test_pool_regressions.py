@@ -8,8 +8,8 @@ These encode two bugs in the persistent-connection feature:
 2. A read timeout with no retries left does not evict the pooled connection,
    so the next command reads the previous command's late response.
 
-Each is marked expectedFailure until the fix lands; they must then pass
-un-marked.
+Both were marked expectedFailure until the ConnectionPool extraction landed;
+they now guard against reintroducing the bugs.
 """
 
 import asyncio
@@ -45,7 +45,6 @@ class TestConnectionPoolRegressions(unittest.IsolatedAsyncioTestCase):
     async def _send(self, client, n):
         return await client._async_send_tcp_command(self.server.host, self._command(n), port=self.server.port)
 
-    @unittest.expectedFailure
     async def test_concurrent_first_commands_share_one_connection(self):
         """Concurrent first commands to one device must share one pooled connection."""
         client = AsyncDLightClient(persistent=True, default_timeout=1.0)

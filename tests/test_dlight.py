@@ -3,24 +3,16 @@ import asyncio
 import socket  # Still needed for socket errors, constants
 import json
 import struct
-from unittest.mock import patch, MagicMock, call, AsyncMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 # --- Import from the package structure (an import failure must fail loudly) ---
 from dlightclient import (
     AsyncDLightClient,
     discover_devices,
-    DLightError,
     DLightConnectionError,
     DLightTimeoutError,
-    DLightCommandError,
     DLightResponseError,
     FACTORY_RESET_IP,
-    DEFAULT_TCP_PORT,
-    DEFAULT_UDP_DISCOVERY_PORT,
-    DEFAULT_UDP_RESPONSE_PORT,
-    BROADCAST_ADDRESS,
-    UDP_DISCOVERY_PAYLOAD_HEX,
-    DEFAULT_TIMEOUT,
     MAX_PAYLOAD_SIZE,
     STATUS_SUCCESS,
 )
@@ -28,11 +20,11 @@ from dlightclient import (
 # Import the internal protocol class for UDP testing
 from dlightclient.discovery import _DiscoveryProtocol
 
+from fake_server import FakeDLightServer
+
 # Module paths for patching specific implementations
 CLIENT_MODULE_PATH = "dlightclient.client"
 DISCOVERY_MODULE_PATH = "dlightclient.discovery"
-
-from fake_server import FakeDLightServer
 
 
 # --- Test Cases ---
@@ -198,7 +190,7 @@ class TestAsyncDLightClientTCP(unittest.IsolatedAsyncioTestCase):
         A connect timeout cannot be simulated deterministically on loopback,
         so this one test stubs the connection establishment.
         """
-        with patch(f"{CLIENT_MODULE_PATH}.asyncio.open_connection", new_callable=AsyncMock) as mock_open:
+        with patch("dlightclient._pool.asyncio.open_connection", new_callable=AsyncMock) as mock_open:
             mock_open.side_effect = asyncio.TimeoutError("Connect timed out")
             with self.assertRaisesRegex(DLightTimeoutError, "Timeout connecting to"):
                 await self._send("QUERY_DEVICE_STATES")

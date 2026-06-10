@@ -7,7 +7,7 @@ import secrets
 import ssl
 import time
 import logging
-from typing import Dict, Any, Optional, Tuple, Union
+from typing import Dict, Any, Optional, Union
 
 # Import constants and exceptions from within the package
 from .constants import (
@@ -24,9 +24,9 @@ from .exceptions import (
     DLightConnectionError,
     DLightTimeoutError,
     DLightCommandError,
-    DLightResponseError,
 )
 from ._frame import encode_command, mask_command, read_response
+from ._pool import ConnectionPool
 from .models import CommandResult
 
 # Logger specific to the client, inheriting from the base logger if needed
@@ -62,17 +62,32 @@ class AsyncDLightClient:
     ):
         """Initializes the AsyncDLightClient."""
         self.default_timeout = default_timeout
-        self.persistent = persistent
         self.max_retries = max_retries
         self.retry_backoff = retry_backoff
-        self.idle_timeout = idle_timeout
         self.ssl = ssl
-        # Key: "ip:port", Value: (reader, writer, last_activity_time, lock)
-        self._connections: Dict[str, Tuple[asyncio.StreamReader, asyncio.StreamWriter, float, asyncio.Lock]] = {}
+        self._pool = ConnectionPool(persistent=persistent, idle_timeout=idle_timeout)
         _LOGGER.debug(
             f"AsyncDLightClient initialized (timeout: {default_timeout}s, "
             f"persistent: {persistent}, max_retries: {max_retries}, idle_timeout: {idle_timeout}s)"
         )
+
+    @property
+    def persistent(self) -> bool:
+        """Whether TCP connections are kept open for reuse."""
+        return self._pool.persistent
+
+    @persistent.setter
+    def persistent(self, value: bool):
+        self._pool.persistent = value
+
+    @property
+    def idle_timeout(self) -> float:
+        """Max time in seconds to reuse an idle connection."""
+        return self._pool.idle_timeout
+
+    @idle_timeout.setter
+    def idle_timeout(self, value: float):
+        self._pool.idle_timeout = value
 
     async def __aenter__(self):
         """Enter the context manager.
@@ -89,16 +104,7 @@ class AsyncDLightClient:
 
     async def close(self):
         """Closes all open persistent connections."""
-        _LOGGER.debug(f"Closing {len(self._connections)} persistent connections")
-        keys = list(self._connections.keys())
-        for key in keys:
-            _, writer, _, _ = self._connections.pop(key)
-            if writer and not writer.is_closing():
-                try:
-                    writer.close()
-                    await asyncio.wait_for(writer.wait_closed(), timeout=2.0)
-                except Exception as e:
-                    _LOGGER.debug(f"Error closing persistent connection {key}: {e}")
+        await self._pool.close_all()
 
     def _generate_command_id(self) -> str:
         """Generates a unique command ID.
@@ -118,15 +124,17 @@ class AsyncDLightClient:
     ) -> CommandResult:
         """Sends a command to a dLight device and returns the response.
 
-        This method establishes a TCP connection (or reuses an existing one),
-        sends a JSON-serialized command, and waits for a response.
-        The dLight protocol uses a 4-byte, big-endian length prefix followed
-        by a JSON payload for responses.
+        Serializes the command, acquires a connection from the pool (reusing
+        a persistent one when possible), performs one request/response
+        exchange, and retries on transient network failures with exponential
+        backoff. Framing and response validation live in ``_frame.py``;
+        connection lifecycle and eviction live in ``_pool.py``.
 
         Args:
             target_ip: The IP address of the dLight device.
             command: The command to send, as a dictionary.
             port: The TCP port to connect to.
+            ssl: Optional SSL setting overriding the client's default.
 
         Returns:
             The JSON response from the device as a dictionary.
@@ -143,130 +151,36 @@ class AsyncDLightClient:
             ssl = self.ssl
 
         operation = f"command {command.get('commandType', 'UNKNOWN')} to {target_ip}:{port}"
-        _LOGGER.debug(f"Preparing {operation} (SSL: {bool(ssl)})")
-        json_data: bytes = b""  # Store serialized command for echo check
-
-        # Construct connection key: "ip:port:ssl_identifier"
-        # If ssl is an SSLContext, use its id() to distinguish between multiple contexts.
-        # This ensures that connections with different SSL configurations are not shared.
-        ssl_identifier = ssl
-        if ssl and not isinstance(ssl, bool):
-            ssl_identifier = f"ctx_{id(ssl)}"
-        key = f"{target_ip}:{port}:{ssl_identifier}"
-
-        # 1. Serialize command to JSON bytes (raises DLightCommandError)
         json_data = encode_command(command)
-        _LOGGER.debug(f"Serialized command ({len(json_data)} bytes): {json.dumps(mask_command(command))!r}")
+        _LOGGER.debug(f"Prepared {operation} ({len(json_data)} bytes, SSL: {bool(ssl)}): "
+                      f"{json.dumps(mask_command(command))!r}")
 
-        # Ensure we have a lock for this connection key to avoid concurrent access during setup
         for attempt in range(self.max_retries + 1):
-            reader: Optional[asyncio.StreamReader] = None
-            writer: Optional[asyncio.StreamWriter] = None
-            lock: Optional[asyncio.Lock] = None
             try:
-                # 2. Get or open connection
-                if key in self._connections:
-                    reader, writer, last_activity, lock = self._connections[key]
-                else:
-                    lock = asyncio.Lock()
-
-                async with lock:
-                    if key in self._connections:
-                        # Re-check inside lock in case it changed
-                        reader, writer, last_activity, _ = self._connections[key]
-
-                        # Check for idle timeout or if writer is closing
-                        is_idle = time.time() - last_activity > self.idle_timeout
-                        if writer.is_closing() or is_idle:
-                            _LOGGER.debug(
-                                f"Cached connection for {key} is {'idle' if is_idle else 'closing'}, removing."
-                            )
-                            if not writer.is_closing():
-                                try:
-                                    writer.close()
-                                except Exception:
-                                    pass
-                            del self._connections[key]
-                            reader, writer = None, None
-                        else:
-                            _LOGGER.debug(f"Reusing persistent connection for {key}")
-                            # Update activity time
-                            self._connections[key] = (reader, writer, time.time(), lock)
-
-                    if not reader or not writer:
-                        _LOGGER.debug(f"Opening new connection for {operation} (Attempt {attempt + 1})")
-                        try:
-                            connect_future = asyncio.open_connection(target_ip, port, ssl=ssl)
-                            reader, writer = await asyncio.wait_for(connect_future, timeout=self.default_timeout)
-                            peername = writer.get_extra_info("peername")
-                            _LOGGER.debug(f"Connection established to {peername}")
-                            if self.persistent:
-                                self._connections[key] = (reader, writer, time.time(), lock)
-                        except asyncio.TimeoutError:
-                            raise DLightTimeoutError(f"Timeout connecting to {target_ip}:{port}") from None
-                        except ConnectionRefusedError as e:
-                            raise DLightConnectionError(f"Connection refused by {target_ip}:{port}") from e
-                        except OSError as e:
-                            raise DLightConnectionError(f"Network error connecting to {target_ip}:{port}: {e}") from e
-
-                    # 3. Send command data with timeout
-                    _LOGGER.debug(f"Sending {len(json_data)} bytes for {operation}")
+                async with self._pool.connection(target_ip, port, ssl, self.default_timeout) as (reader, writer):
                     writer.write(json_data)
                     try:
                         await asyncio.wait_for(writer.drain(), timeout=self.default_timeout)
-                        _LOGGER.debug("Data sent and drained.")
                     except asyncio.TimeoutError:
                         raise DLightTimeoutError(f"Timeout sending data for {operation}") from None
                     except OSError as e:
-                        if key in self._connections:
-                            del self._connections[key]
                         raise DLightConnectionError(f"Network error sending data for {operation}: {e}") from e
 
-                    # 4. Read and validate the framed response
-                    try:
-                        response = await read_response(reader, self.default_timeout, operation, command=command)
-                    except (DLightConnectionError, DLightResponseError):
-                        # A connection that failed mid-read cannot be reused.
-                        if key in self._connections:
-                            del self._connections[key]
-                        raise
-
-                    return response
+                    return await read_response(reader, self.default_timeout, operation, command=command)
 
             except (DLightTimeoutError, DLightConnectionError) as e:
-                # If we have retries left, wait and try again
                 if attempt < self.max_retries:
                     backoff = self.retry_backoff * (2**attempt)
                     _LOGGER.warning(f"Transient error during {operation}: {e}. Retrying in {backoff}s...")
-                    # Close connection before retry to ensure a fresh start
-                    if writer and not writer.is_closing():
-                        try:
-                            writer.close()
-                            await asyncio.wait_for(writer.wait_closed(), timeout=2.0)
-                        except Exception:
-                            pass
-                    writer = None  # Ensure finally block doesn't try to close it again
-                    if key in self._connections:
-                        del self._connections[key]
-
                     await asyncio.sleep(backoff)
                     continue
-                else:
-                    _LOGGER.error(f"Failed {operation} after {attempt + 1} attempts: {e}")
-                    raise
+                _LOGGER.error(f"Failed {operation} after {attempt + 1} attempts: {e}")
+                raise
             except DLightError:
                 raise
             except Exception as e:
                 _LOGGER.exception(f"An unexpected error occurred during {operation}")
                 raise DLightError(f"An unexpected error occurred during {operation}: {e}") from e
-            finally:
-                # 10. Close connection if NOT persistent AND we are not about to retry
-                if not self.persistent and writer and not writer.is_closing():
-                    try:
-                        writer.close()
-                        await asyncio.wait_for(writer.wait_closed(), timeout=2.0)
-                    except Exception:
-                        pass
 
     # --- Public API Methods ---
 
