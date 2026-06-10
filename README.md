@@ -17,6 +17,7 @@ This Python package provides an asynchronous (`asyncio`) client library for disc
     - [3. Performance Optimization](#3-performance-optimization)
   - [Using the Command-Line Tool (CLI)](#using-the-command-line-tool-cli)
 - [API Overview](#api-overview)
+- [Architecture](#architecture)
 - [Development and Testing](#development-and-testing)
 
 ## Features
@@ -150,6 +151,12 @@ python -m dlightclient.cli --ip 192.168.1.100 --id DL12345
 *   `dlightclient.client.AsyncDLightClient`: The low-level TCP client. Supports `persistent=True`.
 *   `dlightclient.device.DLightDevice`: High-level class. Includes state caching automatically.
 *   `dlightclient.exceptions`: Custom exceptions hierarchy rooted in `DLightError`.
+
+## Architecture
+
+For a deep dive into the library's layering, data flow, concurrency model, and
+wire protocol — aimed at contributors — see
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Development and Testing
 
