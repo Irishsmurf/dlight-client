@@ -5,118 +5,32 @@ import json
 import struct
 from unittest.mock import patch, MagicMock, call, AsyncMock
 
-# --- Import from the refactored package structure ---
-try:
-    # Import the public interface defined in dlightclient/__init__.py
-    from dlightclient import (
-        AsyncDLightClient,
-        discover_devices,  # Now a standalone function
-        DLightError,
-        DLightConnectionError,
-        DLightTimeoutError,
-        DLightCommandError,
-        DLightResponseError,
-        # Import constants needed for tests
-        FACTORY_RESET_IP,
-        DEFAULT_TCP_PORT,
-        DEFAULT_UDP_DISCOVERY_PORT,
-        DEFAULT_UDP_RESPONSE_PORT,
-        BROADCAST_ADDRESS,
-        UDP_DISCOVERY_PAYLOAD_HEX,
-        DEFAULT_TIMEOUT,
-        MAX_PAYLOAD_SIZE,  # Import for testing limits
-        STATUS_SUCCESS,  # Import for checking success status
-    )
+# --- Import from the package structure (an import failure must fail loudly) ---
+from dlightclient import (
+    AsyncDLightClient,
+    discover_devices,
+    DLightError,
+    DLightConnectionError,
+    DLightTimeoutError,
+    DLightCommandError,
+    DLightResponseError,
+    FACTORY_RESET_IP,
+    DEFAULT_TCP_PORT,
+    DEFAULT_UDP_DISCOVERY_PORT,
+    DEFAULT_UDP_RESPONSE_PORT,
+    BROADCAST_ADDRESS,
+    UDP_DISCOVERY_PAYLOAD_HEX,
+    DEFAULT_TIMEOUT,
+    MAX_PAYLOAD_SIZE,
+    STATUS_SUCCESS,
+)
 
-    # Import the internal protocol class for UDP testing if needed directly
-    from dlightclient.discovery import _DiscoveryProtocol
+# Import the internal protocol class for UDP testing
+from dlightclient.discovery import _DiscoveryProtocol
 
-    # Define module paths for patching specific implementations
-    CLIENT_MODULE_PATH = "dlightclient.client"
-    DISCOVERY_MODULE_PATH = "dlightclient.discovery"
-    _IMPORT_SUCCESS = True
-
-except ImportError as e:
-    _IMPORT_SUCCESS = False
-    print("Could not import from dlightclient package. Ensure it's installed or accessible.")
-    print(f"Import Error: {e}")
-    # Define dummy classes/variables if import fails
-    CLIENT_MODULE_PATH = "dlightclient.client"  # Fallback path
-    DISCOVERY_MODULE_PATH = "dlightclient.discovery"  # Fallback path
-
-    class DLightError(Exception):
-        pass
-
-    class DLightConnectionError(DLightError):
-        pass
-
-    class DLightTimeoutError(DLightConnectionError):
-        pass
-
-    class DLightCommandError(DLightError):
-        pass
-
-    class DLightResponseError(DLightError):
-        pass
-
-    class AsyncDLightClient:
-        def __init__(self, *args, **kwargs):
-            print("WARNING: Using dummy AsyncDLightClient")
-
-        async def _async_send_tcp_command(self, *args, **kwargs):
-            return {"status": "DUMMY_SUCCESS"}
-
-        async def set_light_state(self, *args, **kwargs):
-            pass  # Add dummy methods called in tests
-
-        async def set_brightness(self, *args, **kwargs):
-            pass
-
-        async def set_color_temperature(self, *args, **kwargs):
-            pass
-
-        async def query_device_state(self, *args, **kwargs):
-            return {"states": {}}
-
-        async def query_device_info(self, *args, **kwargs):
-            return {}
-
-        async def connect_to_wifi(self, *args, **kwargs):
-            return {}
-
-    async def discover_devices(*args, **kwargs):
-        # Minimal dummy implementation for fallback if needed by other tests
-        print("WARNING: Using dummy discover_devices")
-        await asyncio.sleep(0.01)  # Allow loop to run briefly
-        return []
-
-    class _DiscoveryProtocol:  # Dummy protocol for fallback
-        def __init__(self, disc_set, res_list):
-            self.results_list = res_list
-            self.discovered_devices_set = disc_set
-
-        def datagram_received(self, data, addr):
-            # Basic append for dummy testing if needed
-            print("WARNING: Dummy protocol received data")
-            try:
-                info = json.loads(data.decode("utf-8"))
-                info["ip_address"] = addr[0]
-                if addr[0] not in self.discovered_devices_set:
-                    self.results_list.append(info)
-                    self.discovered_devices_set.add(addr[0])
-            except Exception:
-                pass  # Ignore errors in dummy
-
-    # Dummy constants
-    FACTORY_RESET_IP = "192.168.4.1"
-    DEFAULT_TCP_PORT = 3333
-    DEFAULT_UDP_DISCOVERY_PORT = 9478
-    DEFAULT_UDP_RESPONSE_PORT = 9487
-    BROADCAST_ADDRESS = "255.255.255.255"
-    UDP_DISCOVERY_PAYLOAD_HEX = "476f6f676c654e50455f457269635f5761796e65"
-    DEFAULT_TIMEOUT = 5.0
-    MAX_PAYLOAD_SIZE = 10 * 1024
-    STATUS_SUCCESS = "SUCCESS"
+# Module paths for patching specific implementations
+CLIENT_MODULE_PATH = "dlightclient.client"
+DISCOVERY_MODULE_PATH = "dlightclient.discovery"
 
 
 # Helper remains the same
@@ -133,11 +47,6 @@ def create_mock_response(payload_dict: dict) -> bytes:
 # Use standard TestCase for validation tests that don't need an event loop
 class TestAsyncDLightClientValidation(unittest.TestCase):
     """Tests input validation for client methods (synchronous checks)."""
-
-    @classmethod
-    def setUpClass(cls):
-        if not _IMPORT_SUCCESS:
-            raise unittest.SkipTest("Skipping Validation tests due to import failure.")
 
     def setUp(self):
         # Instantiate the real client class from the refactored structure
@@ -194,11 +103,6 @@ class TestAsyncDLightClientValidation(unittest.TestCase):
 @patch(f"{CLIENT_MODULE_PATH}.asyncio.open_connection", new_callable=AsyncMock)
 class TestAsyncDLightClientTCP(unittest.IsolatedAsyncioTestCase):
     """Tests async TCP command sending and response handling, mocking network."""
-
-    @classmethod
-    def setUpClass(cls):
-        if not _IMPORT_SUCCESS:
-            raise unittest.SkipTest("Skipping TCP tests due to import failure.")
 
     def setUp(self):
         # Instantiate the real client
@@ -492,11 +396,6 @@ class TestAsyncDLightClientTCP(unittest.IsolatedAsyncioTestCase):
 class TestAsyncDLightClientUDP(unittest.IsolatedAsyncioTestCase):
     """Tests async UDP Discovery, mocking loop and protocol."""
 
-    @classmethod
-    def setUpClass(cls):
-        if not _IMPORT_SUCCESS:
-            raise unittest.SkipTest("Skipping UDP tests due to import failure.")
-
     # Helper to configure the endpoint mock side effect for UDP tests
     def _configure_udp_endpoint_mock(self, mock_create_endpoint, listen_error=None, send_error=None):
         mock_listen_transport = AsyncMock(spec=asyncio.DatagramTransport)
@@ -770,7 +669,6 @@ class TestAsyncDLightClientUDP(unittest.IsolatedAsyncioTestCase):
         mock_sleep.assert_not_awaited()  # Should exit before sleep
 
 
-@unittest.skipIf(not _IMPORT_SUCCESS, "Skipping persistence tests due to import failure.")
 @patch(f"{CLIENT_MODULE_PATH}.asyncio.open_connection", new_callable=AsyncMock)
 class TestAsyncDLightClientPersistence(unittest.IsolatedAsyncioTestCase):
     """Tests connection pooling and persistent connections."""
@@ -832,11 +730,12 @@ class TestAsyncDLightClientPersistence(unittest.IsolatedAsyncioTestCase):
         mock_writer.close.assert_called_once()
 
     async def test_context_manager_persistence(self, mock_open_connection):
-        """Test using client as a context manager for persistence."""
+        """Test that a persistent client used as a context manager reuses
+        connections inside the block and closes them on exit."""
         resp_bytes = create_mock_response({"status": STATUS_SUCCESS})
         _, mock_writer = self._configure_mock_streams(mock_open_connection, read_data=resp_bytes)
 
-        async with AsyncDLightClient() as client:
+        async with AsyncDLightClient(persistent=True) as client:
             await client.query_device_state(self.target_ip, self.device_id)
             mock_open_connection.return_value[0].readexactly.side_effect = [
                 resp_bytes[:4],

@@ -77,8 +77,12 @@ class AsyncDLightClient:
         )
 
     async def __aenter__(self):
-        """Enable persistence when used as a context manager."""
-        self.persistent = True
+        """Enter the context manager.
+
+        Persistence is controlled solely by the ``persistent`` constructor
+        argument; the context manager only guarantees that ``close()`` is
+        called on exit.
+        """
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
