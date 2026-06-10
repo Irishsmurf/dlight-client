@@ -25,11 +25,13 @@ This Python package provides an asynchronous (`asyncio`) client library for disc
 *   **Asynchronous:** Built with `asyncio` for efficient, non-blocking network operations.
 *   **Device Discovery:** Find dLight devices on your local network using UDP broadcast (`discover_devices`).
 *   **High-Level Device Control:** An easy-to-use `DLightDevice` class for object-oriented control of a specific lamp.
-*   **Performance Optimized (New):**
-    *   **Persistent TCP Connections:** Reuse connections for sequential commands to reduce latency.
-    *   **Connection Concurrency Safety:** Automatic locking ensures multiple concurrent tasks can share a client safely.
+*   **Performance Optimized:**
+    *   **Persistent TCP Connections:** Reuse connections for sequential commands to reduce latency (`persistent=True`).
+    *   **Connection Concurrency Safety:** Automatic per-device locking ensures multiple concurrent tasks can share a client safely.
     *   **Idle Timeout:** Stale connections are automatically closed and refreshed after a period of inactivity (default 60s).
     *   **State Caching & Optimistic Updates:** Internal cache in `DLightDevice` reduces redundant network queries and provides immediate feedback.
+*   **Automatic Retries:** Opt-in retries with exponential backoff (`max_retries`, `retry_backoff`) for transient network failures. Protocol errors are never retried.
+*   **Optional TLS:** Pass `ssl=True` or a custom `ssl.SSLContext` to encrypt the TCP channel (CLI: `--ssl`, `--insecure`).
 *   **Developer Friendly:**
     *   **Structured Models:** Use `TypedDict` models (`DeviceState`, `DeviceInfo`, etc.) for better IDE support and type safety.
 *   **State Control:**
@@ -115,22 +117,39 @@ if __name__ == "__main__":
 
 For applications that need to send many commands in a row, use **Persistent Connections** to eliminate connection setup overhead.
 
-**Option A: Scoped Persistence (Context Manager)**
+Persistence is enabled by the `persistent=True` constructor argument. The context
+manager does not enable it; it only guarantees that all pooled connections are
+closed on exit.
+
+**Option A: Context Manager (recommended)**
 ```python
 from dlightclient import AsyncDLightClient, DLightDevice
 
-async with AsyncDLightClient() as client:
+async with AsyncDLightClient(persistent=True) as client:
     device = DLightDevice(ip_address="192.168.1.123", device_id="DL12345", client=client)
-    # Both commands will use the SAME TCP connection
+    # Both commands reuse the same TCP connection
     await device.turn_on()
     await device.set_brightness(50)
+# All connections are closed when the block exits
 ```
 
-**Option B: Global Persistence**
+**Option B: Manual Lifecycle**
 ```python
 client = AsyncDLightClient(persistent=True)
-# ... perform operations ...
-await client.close() # Explicitly close when finished
+try:
+    ...  # perform operations
+finally:
+    await client.close()  # Explicitly close when finished
+```
+
+> **Changed in 1.6.0:** `async with AsyncDLightClient()` no longer implicitly
+> enables persistence; pass `persistent=True` explicitly.
+
+For lossy Wi-Fi environments, enable retries — they apply only to transient
+network errors (timeouts, connection failures), never to protocol errors:
+
+```python
+client = AsyncDLightClient(max_retries=2, retry_backoff=0.5)  # waits 0.5s, then 1.0s
 ```
 
 ### Using the Command-Line Tool (CLI)
