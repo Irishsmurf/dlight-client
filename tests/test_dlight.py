@@ -32,13 +32,7 @@ from dlightclient.discovery import _DiscoveryProtocol
 CLIENT_MODULE_PATH = "dlightclient.client"
 DISCOVERY_MODULE_PATH = "dlightclient.discovery"
 
-
-# Helper remains the same
-def create_mock_response(payload_dict: dict) -> bytes:
-    """Encodes a dict into the dLight response format (header + payload)."""
-    payload_bytes = json.dumps(payload_dict).encode("utf-8")
-    header = struct.pack(">I", len(payload_bytes))  # Big-endian 4-byte length
-    return header + payload_bytes
+from fake_server import FakeDLightServer
 
 
 # --- Test Cases ---
@@ -98,295 +92,183 @@ class TestAsyncDLightClientValidation(unittest.TestCase):
             asyncio.run(self.client.set_color_temperature(self.target_ip, self.device_id, 6001))
 
 
-# Use IsolatedAsyncioTestCase for tests involving actual awaits on mocked objects
-# Patch asyncio.open_connection where it's used: inside the client module
-@patch(f"{CLIENT_MODULE_PATH}.asyncio.open_connection", new_callable=AsyncMock)
+# Tests run against a real in-process TCP server speaking the dLight protocol
+# (tests/fake_server.py), so they assert observable behavior rather than the
+# client's internal stream read/write sequence.
 class TestAsyncDLightClientTCP(unittest.IsolatedAsyncioTestCase):
-    """Tests async TCP command sending and response handling, mocking network."""
+    """Tests async TCP command sending and response handling."""
 
     def setUp(self):
-        # Instantiate the real client
-        self.client = AsyncDLightClient(default_timeout=1.0)
-        self.target_ip = "192.168.1.100"
+        self.client = AsyncDLightClient(default_timeout=0.5)
         self.device_id = "testdevice1"
 
-    def _configure_mock_streams(self, mock_open_connection, read_error=None, write_error=None, read_data=None):
-        """Helper to configure mock StreamReader and StreamWriter."""
-        mock_reader = AsyncMock(spec=asyncio.StreamReader)
-        mock_writer = AsyncMock(spec=asyncio.StreamWriter)
-        mock_open_connection.return_value = (mock_reader, mock_writer)
+    async def asyncSetUp(self):
+        self.server = FakeDLightServer()
+        await self.server.start()
 
-        # Configure reader behavior
-        if read_error:
-            mock_reader.readexactly.side_effect = read_error
-        elif read_data:
-            # Simulate reading header then payload
-            if isinstance(read_data, bytes) and len(read_data) >= 4:
-                header = read_data[:4]
-                payload = read_data[4:]
-                mock_reader.readexactly.side_effect = [
-                    header,
-                    payload,
-                    asyncio.IncompleteReadError(b"", None),
-                ]  # Add error for subsequent calls
-            # Handle case where only header is provided (e.g., zero payload test)
-            elif isinstance(read_data, bytes) and len(read_data) == 4:
-                mock_reader.readexactly.side_effect = [read_data, asyncio.IncompleteReadError(b"", None)]
-            else:  # Handle cases where read_data isn't a full response or is an error itself
-                mock_reader.readexactly.side_effect = (
-                    [read_data, asyncio.IncompleteReadError(b"", None)]
-                    if not isinstance(read_data, Exception)
-                    else read_data
-                )
-        else:
-            # Default to incomplete read if no data/error specified
-            mock_reader.readexactly.side_effect = asyncio.IncompleteReadError(partial=b"", expected=4)
+    async def asyncTearDown(self):
+        await self.server.stop()
 
-        # Configure writer behavior
-        if write_error:
-            mock_writer.drain.side_effect = write_error
-        mock_writer.wait_closed = AsyncMock()  # Ensure awaitable
-        mock_writer.is_closing.return_value = False  # For finally block check
-        # Add get_extra_info mock needed by _async_send_tcp_command logging/closing
-        mock_writer.get_extra_info.return_value = (self.target_ip, DEFAULT_TCP_PORT)
+    def _command(self, command_type="QUERY_DEVICE_STATES", **extra):
+        command = {
+            "commandId": "cmd-test-123",
+            "deviceId": self.device_id,
+            "commandType": command_type,
+            "commands": [],
+        }
+        command.update(extra)
+        return command
 
-        return mock_reader, mock_writer
+    async def _send(self, command_type="QUERY_DEVICE_STATES", **extra):
+        return await self.client._async_send_tcp_command(
+            self.server.host, self._command(command_type, **extra), port=self.server.port
+        )
 
-    # Test methods are async def
-    async def test_send_tcp_success(self, mock_open_connection):
-        """Test successful async TCP command send and response."""
-        cmd_id = "cmd-async-123"
-        # Patch the client instance's ID generator method directly
-        with patch.object(self.client, "_generate_command_id", return_value=cmd_id):
-            success_payload = {"commandId": cmd_id, "deviceId": self.device_id, "status": STATUS_SUCCESS, "on": True}
-            mock_response_bytes = create_mock_response(success_payload)
-            mock_reader, mock_writer = self._configure_mock_streams(mock_open_connection, read_data=mock_response_bytes)
+    async def test_send_tcp_success(self):
+        """Test successful TCP command send and response."""
+        success_payload = {
+            "commandId": "cmd-test-123",
+            "deviceId": self.device_id,
+            "status": STATUS_SUCCESS,
+            "on": True,
+        }
+        self.server.respond(success_payload)
 
-            response = await self.client.set_light_state(self.target_ip, self.device_id, True)  # Use await
+        response = await self._send("EXECUTE", commands=[{"on": True}])
 
-            # Assertions remain similar, checking mocks were called correctly
-            mock_open_connection.assert_awaited_once_with(self.target_ip, DEFAULT_TCP_PORT, ssl=None)
-            mock_writer.write.assert_called_once()
-            sent_data = mock_writer.write.call_args[0][0]
-            sent_cmd = json.loads(sent_data.decode("utf-8"))
-            self.assertEqual(sent_cmd["commandId"], cmd_id)
-            self.assertEqual(sent_cmd["commands"][0]["on"], True)
-            mock_writer.drain.assert_awaited_once()
+        self.assertEqual(response, success_payload)
+        self.assertEqual(len(self.server.received_commands), 1)
+        sent_cmd = self.server.received_commands[0]
+        self.assertEqual(sent_cmd["commandId"], "cmd-test-123")
+        self.assertEqual(sent_cmd["commands"][0]["on"], True)
+        # Non-persistent client closes the connection after the call
+        await asyncio.sleep(0.05)
+        self.assertEqual(self.server.closed_connections, 1)
 
-            payload_len = len(json.dumps(success_payload).encode("utf-8"))
-            expected_calls = [call(4), call(payload_len)]  # Header, Payload
-            self.assertEqual(mock_reader.readexactly.await_args_list, expected_calls)
+    async def test_send_tcp_query_state(self):
+        """Test successful query response with a states payload."""
+        query_response_payload = {
+            "commandId": "cmd-test-123",
+            "deviceId": self.device_id,
+            "status": STATUS_SUCCESS,
+            "states": {"on": False, "brightness": 50, "color": {"temperature": 4000}},
+        }
+        self.server.respond(query_response_payload)
 
-            self.assertEqual(response, success_payload)
-            mock_writer.close.assert_called_once()
-            mock_writer.wait_closed.assert_awaited_once()
+        response = await self._send("QUERY_DEVICE_STATES")
 
-    async def test_send_tcp_query_state(self, mock_open_connection):
-        """Test successful query_device_state command."""
-        cmd_id = "cmd-async-query"
-        with patch.object(self.client, "_generate_command_id", return_value=cmd_id):
-            query_response_payload = {
-                "commandId": cmd_id,
-                "deviceId": self.device_id,
-                "status": STATUS_SUCCESS,
-                "states": {"on": False, "brightness": 50, "color": {"temperature": 4000}},
-            }
-            mock_response_bytes = create_mock_response(query_response_payload)
-            mock_reader, mock_writer = self._configure_mock_streams(mock_open_connection, read_data=mock_response_bytes)
+        self.assertEqual(response, query_response_payload)
+        self.assertEqual(self.server.received_commands[0]["commandType"], "QUERY_DEVICE_STATES")
 
-            response = await self.client.query_device_state(self.target_ip, self.device_id)
-
-            mock_open_connection.assert_awaited_once_with(self.target_ip, DEFAULT_TCP_PORT, ssl=None)
-            mock_writer.write.assert_called_once()
-            sent_data = mock_writer.write.call_args[0][0]
-            sent_cmd = json.loads(sent_data.decode("utf-8"))
-            self.assertEqual(sent_cmd["commandId"], cmd_id)
-            self.assertEqual(sent_cmd["commandType"], "QUERY_DEVICE_STATES")
-            mock_writer.drain.assert_awaited_once()
-
-            payload_len = len(json.dumps(query_response_payload).encode("utf-8"))
-            expected_calls = [call(4), call(payload_len)]  # Header, Payload
-            self.assertEqual(mock_reader.readexactly.await_args_list, expected_calls)
-
-            self.assertEqual(response, query_response_payload)
-            mock_writer.close.assert_called_once()
-            mock_writer.wait_closed.assert_awaited_once()
-
-    async def test_send_tcp_zero_payload_response(self, mock_open_connection):
+    async def test_send_tcp_zero_payload_response(self):
         """Test handling of a response with zero payload length."""
-        cmd_id = "cmd-async-zero"
-        with patch.object(self.client, "_generate_command_id", return_value=cmd_id):
-            # Simulate response with only a header indicating 0 length
-            zero_payload_header = struct.pack(">I", 0)
-            mock_reader, mock_writer = self._configure_mock_streams(mock_open_connection, read_data=zero_payload_header)
+        self.server.respond_raw(struct.pack(">I", 0))
 
-            # Use a command that might plausibly return no payload on success (e.g., set state)
-            response = await self.client.set_light_state(self.target_ip, self.device_id, False)
+        response = await self._send("EXECUTE", commands=[{"on": False}])
 
-            mock_open_connection.assert_awaited_once_with(self.target_ip, DEFAULT_TCP_PORT, ssl=None)
-            mock_writer.write.assert_called_once()
-            mock_writer.drain.assert_awaited_once()
+        # The client synthesizes a success response for empty payloads
+        self.assertEqual(response, {"status": STATUS_SUCCESS, "_payload_length": 0})
 
-            # Only the header should be read
-            expected_calls = [call(4)]
-            self.assertEqual(mock_reader.readexactly.await_args_list, expected_calls)
-
-            # Check that the client synthesized a success response
-            self.assertEqual(response, {"status": STATUS_SUCCESS, "_payload_length": 0})
-            mock_writer.close.assert_called_once()
-            mock_writer.wait_closed.assert_awaited_once()
-
-    async def test_send_tcp_max_payload_exceeded(self, mock_open_connection):
+    async def test_send_tcp_max_payload_exceeded(self):
         """Test error when header indicates payload size exceeds MAX_PAYLOAD_SIZE."""
-        cmd_id = "cmd-async-large"
-        with patch.object(self.client, "_generate_command_id", return_value=cmd_id):
-            # Simulate response with a header indicating excessive length
-            large_length = MAX_PAYLOAD_SIZE + 1
-            large_payload_header = struct.pack(">I", large_length)
-            mock_reader, mock_writer = self._configure_mock_streams(
-                mock_open_connection, read_data=large_payload_header
-            )
+        large_length = MAX_PAYLOAD_SIZE + 1
+        self.server.respond_raw(struct.pack(">I", large_length))
 
-            with self.assertRaisesRegex(DLightResponseError, f"Payload length {large_length}.*exceeds maximum limit"):
-                await self.client.query_device_info(self.target_ip, self.device_id)
+        with self.assertRaisesRegex(DLightResponseError, f"Payload length {large_length}.*exceeds maximum limit"):
+            await self._send("QUERY_DEVICE_INFO")
 
-            mock_open_connection.assert_awaited_once_with(self.target_ip, DEFAULT_TCP_PORT, ssl=None)
-            mock_writer.write.assert_called_once()
-            mock_writer.drain.assert_awaited_once()
+    async def test_send_tcp_read_payload_incomplete(self):
+        """Test the connection closing mid-payload."""
+        # Header promises 100 bytes but only 10 arrive before the close
+        self.server.respond_raw(struct.pack(">I", 100) + b"0123456789", close=True)
 
-            # Only the header should be read before error
-            expected_calls = [call(4)]
-            self.assertEqual(mock_reader.readexactly.await_args_list, expected_calls)
+        with self.assertRaisesRegex(DLightResponseError, "Connection closed unexpectedly while reading payload"):
+            await self._send("EXECUTE", commands=[{"brightness": 55}])
 
-            mock_writer.close.assert_called_once()
-            mock_writer.wait_closed.assert_awaited_once()
-
-    async def test_send_tcp_read_payload_incomplete(self, mock_open_connection):
-        """Test reading payload resulting in IncompleteReadError."""
-        cmd_id = "cmd-async-incomplete"
-        with patch.object(self.client, "_generate_command_id", return_value=cmd_id):
-            success_payload = {
-                "commandId": cmd_id,
-                "deviceId": self.device_id,
-                "status": STATUS_SUCCESS,
-                "brightness": 55,
-            }
-            payload_bytes = json.dumps(success_payload).encode("utf-8")
-            header = struct.pack(">I", len(payload_bytes))
-            chunk1 = payload_bytes[:10]  # Partial payload data
-
-            # Simulate header ok, but payload read gets incomplete error
-            read_error = asyncio.IncompleteReadError(partial=chunk1, expected=len(payload_bytes))
-            mock_reader, mock_writer = self._configure_mock_streams(mock_open_connection)
-            # Set side effect: header is read, then the error occurs on payload read
-            mock_reader.readexactly.side_effect = [header, read_error]
-
-            with self.assertRaisesRegex(DLightResponseError, "Connection closed unexpectedly while reading payload"):
-                await self.client.set_brightness(self.target_ip, self.device_id, 55)
-
-            mock_open_connection.assert_awaited_once_with(self.target_ip, DEFAULT_TCP_PORT, ssl=None)
-            mock_writer.write.assert_called_once()
-            mock_writer.drain.assert_awaited_once()
-            # Check readexactly was called for header (4 bytes) and then for payload
-            expected_calls = [call(4), call(len(payload_bytes))]
-            self.assertEqual(mock_reader.readexactly.await_args_list, expected_calls)
-            mock_writer.close.assert_called_once()
-            mock_writer.wait_closed.assert_awaited_once()
-
-    async def test_send_tcp_non_success_status(self, mock_open_connection):
+    async def test_send_tcp_non_success_status(self):
         """Test handling non-SUCCESS status."""
-        cmd_id = "cmd-async-fail"
-        with patch.object(self.client, "_generate_command_id", return_value=cmd_id):
-            fail_payload = {"commandId": cmd_id, "deviceId": self.device_id, "status": "ERROR_DEVICE_BUSY"}
-            mock_response_bytes = create_mock_response(fail_payload)
-            mock_reader, mock_writer = self._configure_mock_streams(mock_open_connection, read_data=mock_response_bytes)
+        self.server.respond({"commandId": "cmd-test-123", "deviceId": self.device_id, "status": "ERROR_DEVICE_BUSY"})
 
-            with self.assertRaisesRegex(DLightResponseError, "dLight returned non-SUCCESS status: 'ERROR_DEVICE_BUSY'"):
-                await self.client.query_device_info(self.target_ip, self.device_id)
-            mock_writer.close.assert_called_once()
-            mock_writer.wait_closed.assert_awaited_once()
+        with self.assertRaisesRegex(DLightResponseError, "dLight returned non-SUCCESS status: 'ERROR_DEVICE_BUSY'"):
+            await self._send("QUERY_DEVICE_INFO")
 
-    async def test_send_tcp_connect_timeout(self, mock_open_connection):
-        """Test connection timeout using asyncio.TimeoutError."""
-        mock_open_connection.side_effect = asyncio.TimeoutError(
-            "Connect timed out"
-        )  # Simulate timeout during open_connection
-        with self.assertRaisesRegex(DLightTimeoutError, f"Timeout connecting to {self.target_ip}"):
-            await self.client.query_device_state(self.target_ip, self.device_id)
-        mock_open_connection.assert_awaited_once()
-        # Writer/Reader are not created, so close is not called
+    async def test_send_tcp_connect_timeout(self):
+        """Test connection timeout.
 
-    async def test_send_tcp_connect_refused(self, mock_open_connection):
-        """Test connection refused error."""
-        mock_open_connection.side_effect = ConnectionRefusedError("Connection refused")
-        with self.assertRaisesRegex(DLightConnectionError, f"Connection refused by {self.target_ip}"):
-            await self.client.query_device_state(self.target_ip, self.device_id)
-        mock_open_connection.assert_awaited_once()
+        A connect timeout cannot be simulated deterministically on loopback,
+        so this one test stubs the connection establishment.
+        """
+        with patch(f"{CLIENT_MODULE_PATH}.asyncio.open_connection", new_callable=AsyncMock) as mock_open:
+            mock_open.side_effect = asyncio.TimeoutError("Connect timed out")
+            with self.assertRaisesRegex(DLightTimeoutError, "Timeout connecting to"):
+                await self._send("QUERY_DEVICE_STATES")
 
-    async def test_send_tcp_read_header_timeout(self, mock_open_connection):
-        """Test timeout receiving header (via readexactly)."""
-        mock_reader, mock_writer = self._configure_mock_streams(mock_open_connection)
-        # Simulate timeout *during* the first readexactly call (for the header)
-        mock_reader.readexactly.side_effect = asyncio.TimeoutError("Header read timed out")
+    async def test_send_tcp_connect_refused(self):
+        """Test connection refused error (nothing listening on the port)."""
+        port = self.server.port
+        await self.server.stop()
 
-        with self.assertRaisesRegex(DLightTimeoutError, "Timeout reading header for command*"):
-            await self.client.query_device_info(self.target_ip, self.device_id)
-        mock_writer.close.assert_called_once()
-        mock_writer.wait_closed.assert_awaited_once()
+        with self.assertRaisesRegex(DLightConnectionError, "Connection refused by"):
+            await self.client._async_send_tcp_command(self.server.host, self._command(), port=port)
 
-    async def test_send_tcp_read_payload_timeout(self, mock_open_connection):
-        """Test timeout receiving payload."""
-        header = struct.pack(">I", 100)  # Expect 100 byte payload
-        mock_reader, mock_writer = self._configure_mock_streams(mock_open_connection)
-        # Simulate header OK, but timeout on second readexactly (for the payload)
-        mock_reader.readexactly.side_effect = [header, asyncio.TimeoutError("Payload read timed out")]
+    async def test_send_tcp_read_header_timeout(self):
+        """Test timeout waiting for the response header."""
+        self.server.hang()
 
-        with self.assertRaisesRegex(DLightTimeoutError, "Timeout reading payload (100 bytes)*"):
-            await self.client.query_device_info(self.target_ip, self.device_id)
-        mock_writer.close.assert_called_once()
-        mock_writer.wait_closed.assert_awaited_once()
+        with self.assertRaisesRegex(DLightTimeoutError, "Timeout reading header for command"):
+            await self._send("QUERY_DEVICE_INFO")
 
-    async def test_send_tcp_incomplete_header(self, mock_open_connection):
-        """Test receiving incomplete header."""
-        incomplete_data = b"\x00\x00"
-        read_error = asyncio.IncompleteReadError(partial=incomplete_data, expected=4)
-        mock_reader, mock_writer = self._configure_mock_streams(mock_open_connection)
-        # Set error for first read (header)
-        mock_reader.readexactly.side_effect = read_error
+    async def test_send_tcp_read_payload_timeout(self):
+        """Test timeout waiting for the payload after a valid header."""
+        self.server.respond_raw(struct.pack(">I", 100))  # promise 100 bytes, never send them
+
+        with self.assertRaisesRegex(DLightTimeoutError, r"Timeout reading payload \(100 bytes\)"):
+            await self._send("QUERY_DEVICE_INFO")
+
+    async def test_send_tcp_incomplete_header(self):
+        """Test the connection closing mid-header."""
+        self.server.respond_raw(b"\x00\x00", close=True)
 
         with self.assertRaisesRegex(DLightResponseError, "Connection closed unexpectedly while reading header"):
-            await self.client.query_device_state(self.target_ip, self.device_id)
-        mock_writer.close.assert_called_once()
-        mock_writer.wait_closed.assert_awaited_once()
+            await self._send("QUERY_DEVICE_STATES")
 
-    async def test_send_tcp_invalid_payload_json(self, mock_open_connection):
+    async def test_send_tcp_invalid_payload_json(self):
         """Test invalid JSON payload."""
-        invalid_payload = b'{"status": "SUCCESS", "on": tru'  # Incomplete JSON
-        header = struct.pack(">I", len(invalid_payload))
-        mock_reader, mock_writer = self._configure_mock_streams(mock_open_connection)
-        # Provide header and invalid payload sequentially
-        mock_reader.readexactly.side_effect = [header, invalid_payload]
+        invalid_payload = b'{"status": "SUCCESS", "on": tru'  # Truncated JSON
+        self.server.respond_raw(struct.pack(">I", len(invalid_payload)) + invalid_payload)
 
         with self.assertRaisesRegex(DLightResponseError, "Failed to decode JSON payload"):
-            await self.client.set_light_state(self.target_ip, self.device_id, True)
-        mock_writer.close.assert_called_once()
-        mock_writer.wait_closed.assert_awaited_once()
+            await self._send("EXECUTE", commands=[{"on": True}])
 
-    async def test_connect_to_wifi_uses_factory_ip(self, mock_open_connection):
-        """Verify async connect_to_wifi targets factory IP by default."""
-        cmd_id = "cmd-async-wifi"
-        # Patch the ID generator on the instance
-        with patch.object(self.client, "_generate_command_id", return_value=cmd_id):
-            success_payload = {"commandId": cmd_id, "deviceId": self.device_id, "status": STATUS_SUCCESS}
-            mock_response_bytes = create_mock_response(success_payload)
-            mock_reader, mock_writer = self._configure_mock_streams(mock_open_connection, read_data=mock_response_bytes)
+    async def test_send_tcp_echoed_command(self):
+        """Test that a device echoing the command back is treated as an error."""
+        self.server.echo()
+
+        with self.assertRaisesRegex(DLightResponseError, "echoed back the command"):
+            await self._send("EXECUTE", commands=[{"on": True}])
+
+    async def test_connect_to_wifi_full_path(self):
+        """Test connect_to_wifi over the wire (explicit target ip/port)."""
+        self.server.respond({"status": STATUS_SUCCESS})
+
+        await self.client.connect_to_wifi(
+            self.device_id, "MySSID", "MyPassword", target_ip=self.server.host, port=self.server.port
+        )
+
+        sent_cmd = self.server.received_commands[0]
+        self.assertEqual(sent_cmd["commandType"], "SSID_CONNECT")
+        self.assertEqual(sent_cmd["ssid"], "MySSID")
+        self.assertEqual(sent_cmd["password"], "MyPassword")
+
+    async def test_connect_to_wifi_uses_factory_ip(self):
+        """Verify connect_to_wifi targets the factory-reset IP by default."""
+        with patch.object(self.client, "_async_send_tcp_command", new_callable=AsyncMock) as mock_send:
+            mock_send.return_value = {"status": STATUS_SUCCESS}
 
             await self.client.connect_to_wifi(self.device_id, "MySSID", "MyPassword")
 
-            # Assert connection was attempted to the FACTORY_RESET_IP
-            mock_open_connection.assert_awaited_once_with(FACTORY_RESET_IP, DEFAULT_TCP_PORT, ssl=None)
-            mock_writer.close.assert_called_once()
-            mock_writer.wait_closed.assert_awaited_once()
+            call_args, _ = mock_send.call_args
+            self.assertEqual(call_args[0], FACTORY_RESET_IP)
 
 
 # Use IsolatedAsyncioTestCase for tests involving actual awaits on mocked objects
@@ -669,85 +551,66 @@ class TestAsyncDLightClientUDP(unittest.IsolatedAsyncioTestCase):
         mock_sleep.assert_not_awaited()  # Should exit before sleep
 
 
-@patch(f"{CLIENT_MODULE_PATH}.asyncio.open_connection", new_callable=AsyncMock)
 class TestAsyncDLightClientPersistence(unittest.IsolatedAsyncioTestCase):
     """Tests connection pooling and persistent connections."""
 
     def setUp(self):
-        self.target_ip = "192.168.1.100"
         self.device_id = "testdevice1"
 
-    def _configure_mock_streams(self, mock_open_connection, read_data=None):
-        mock_reader = AsyncMock(spec=asyncio.StreamReader)
-        mock_writer = AsyncMock(spec=asyncio.StreamWriter)
-        mock_open_connection.return_value = (mock_reader, mock_writer)
-        if read_data:
-            if isinstance(read_data, bytes) and len(read_data) >= 4:
-                header = read_data[:4]
-                payload = read_data[4:]
-                mock_reader.readexactly.side_effect = [header, payload, asyncio.IncompleteReadError(b"", None)]
-            else:
-                mock_reader.readexactly.side_effect = [read_data, asyncio.IncompleteReadError(b"", None)]
-        mock_writer.wait_closed = AsyncMock()
-        mock_writer.is_closing.return_value = False
-        mock_writer.get_extra_info.return_value = (self.target_ip, DEFAULT_TCP_PORT)
-        return mock_reader, mock_writer
+    async def asyncSetUp(self):
+        self.server = FakeDLightServer()
+        await self.server.start()
 
-    async def test_non_persistent_closes_connection(self, mock_open_connection):
-        """Test that non-persistent client closes connection after each call."""
-        client = AsyncDLightClient(persistent=False)
-        resp_bytes = create_mock_response({"status": STATUS_SUCCESS})
-        _, mock_writer = self._configure_mock_streams(mock_open_connection, read_data=resp_bytes)
+    async def asyncTearDown(self):
+        await self.server.stop()
 
-        await client.query_device_state(self.target_ip, self.device_id)
-        mock_writer.close.assert_called_once()
-        self.assertEqual(mock_open_connection.await_count, 1)
+    def _command(self, n=1):
+        return {
+            "commandId": f"cmd-persist-{n}",
+            "deviceId": self.device_id,
+            "commandType": "QUERY_DEVICE_STATES",
+            "commands": [],
+        }
 
-    async def test_persistent_reuses_connection(self, mock_open_connection):
-        """Test that persistent client reuses connection."""
-        client = AsyncDLightClient(persistent=True)
-        resp_bytes = create_mock_response({"status": STATUS_SUCCESS})
-        _, mock_writer = self._configure_mock_streams(mock_open_connection, read_data=resp_bytes)
+    async def _send(self, client, n=1):
+        return await client._async_send_tcp_command(self.server.host, self._command(n), port=self.server.port)
 
-        # First call opens connection
-        await client.query_device_state(self.target_ip, self.device_id)
-        self.assertEqual(mock_open_connection.await_count, 1)
-        mock_writer.close.assert_not_called()
+    async def test_non_persistent_closes_connection(self):
+        """A non-persistent client opens and closes a connection per call."""
+        client = AsyncDLightClient(persistent=False, default_timeout=0.5)
 
-        # Second call reuses connection
-        # Reset read side effect for second call
-        mock_open_connection.return_value[0].readexactly.side_effect = [
-            resp_bytes[:4],
-            resp_bytes[4:],
-            asyncio.IncompleteReadError(b"", None),
-        ]
-        await client.query_device_state(self.target_ip, self.device_id)
-        self.assertEqual(mock_open_connection.await_count, 1)
-        mock_writer.close.assert_not_called()
+        await self._send(client, 1)
+        await self._send(client, 2)
 
-        # Close explicitly
-        await client.close()
-        mock_writer.close.assert_called_once()
+        self.assertEqual(self.server.connection_count, 2)
+        await asyncio.sleep(0.05)
+        self.assertEqual(self.server.closed_connections, 2)
 
-    async def test_context_manager_persistence(self, mock_open_connection):
-        """Test that a persistent client used as a context manager reuses
-        connections inside the block and closes them on exit."""
-        resp_bytes = create_mock_response({"status": STATUS_SUCCESS})
-        _, mock_writer = self._configure_mock_streams(mock_open_connection, read_data=resp_bytes)
+    async def test_persistent_reuses_connection(self):
+        """A persistent client reuses one connection for sequential calls."""
+        client = AsyncDLightClient(persistent=True, default_timeout=0.5)
+        try:
+            await self._send(client, 1)
+            await self._send(client, 2)
+            self.assertEqual(self.server.connection_count, 1)
+            self.assertEqual(self.server.closed_connections, 0)
+        finally:
+            await client.close()
 
-        async with AsyncDLightClient(persistent=True) as client:
-            await client.query_device_state(self.target_ip, self.device_id)
-            mock_open_connection.return_value[0].readexactly.side_effect = [
-                resp_bytes[:4],
-                resp_bytes[4:],
-                asyncio.IncompleteReadError(b"", None),
-            ]
-            await client.query_device_state(self.target_ip, self.device_id)
-            self.assertEqual(mock_open_connection.await_count, 1)
-            mock_writer.close.assert_not_called()
+        await asyncio.sleep(0.05)
+        self.assertEqual(self.server.closed_connections, 1)
 
-        # Exiting context closes connections
-        mock_writer.close.assert_called_once()
+    async def test_context_manager_persistence(self):
+        """A persistent client used as a context manager reuses connections
+        inside the block and closes them on exit."""
+        async with AsyncDLightClient(persistent=True, default_timeout=0.5) as client:
+            await self._send(client, 1)
+            await self._send(client, 2)
+            self.assertEqual(self.server.connection_count, 1)
+            self.assertEqual(self.server.closed_connections, 0)
+
+        await asyncio.sleep(0.05)
+        self.assertEqual(self.server.closed_connections, 1)
 
 
 if __name__ == "__main__":
