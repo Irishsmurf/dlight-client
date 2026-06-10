@@ -8,14 +8,14 @@ build-backend = "setuptools.build_meta"
 [project]
 # Core metadata about your project
 name = "dlight-client" # Distribution name (for pip install)
-version = "1.5.1"
+dynamic = ["version"] # Version is sourced from dlightclient.__version__
 authors = [
   { name="David Kernan", email="dave@paddez.com" },
 ]
 description = "A Python client for the dLight smart lamp API."
 readme = "README.md" # Path to your README file
 license = "MIT"
-requires-python = ">=3.7" # Minimum Python version supported
+requires-python = ">=3.9" # Minimum Python version supported
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
@@ -29,6 +29,9 @@ classifiers = [
     "Topic :: System :: Networking",
 ]
 keywords = ["dlight", "smart home", "lighting", "api", "iot"]
+
+[tool.setuptools.dynamic]
+version = {attr = "dlightclient.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["dlightclient*"]
