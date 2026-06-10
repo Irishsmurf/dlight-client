@@ -167,7 +167,7 @@ class TestAsyncDLightClientTCP(unittest.IsolatedAsyncioTestCase):
         response = await self._send("EXECUTE", commands=[{"on": False}])
 
         # The client synthesizes a success response for empty payloads
-        self.assertEqual(response, {"status": STATUS_SUCCESS, "_payload_length": 0})
+        self.assertEqual(response, {"status": STATUS_SUCCESS})
 
     async def test_send_tcp_max_payload_exceeded(self):
         """Test error when header indicates payload size exceeds MAX_PAYLOAD_SIZE."""

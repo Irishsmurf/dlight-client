@@ -8,8 +8,8 @@ These encode two bugs in the persistent-connection feature:
 2. A read timeout with no retries left does not evict the pooled connection,
    so the next command reads the previous command's late response.
 
-Both are marked expectedFailure until the ConnectionPool extraction lands;
-they must then pass un-marked.
+Each is marked expectedFailure until the fix lands; they must then pass
+un-marked.
 """
 
 import asyncio
@@ -58,7 +58,6 @@ class TestConnectionPoolRegressions(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["status"], STATUS_SUCCESS)
         self.assertEqual(self.server.connection_count, 1)
 
-    @unittest.expectedFailure
     async def test_timeout_evicts_pooled_connection(self):
         """After a read timeout the pooled connection must not be reused.
 

@@ -34,4 +34,3 @@ class CommandResult(TypedDict, total=False):
     commandId: str
     deviceId: str
     states: DeviceState
-    _payload_length: int

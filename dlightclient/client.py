@@ -5,7 +5,6 @@ import asyncio
 import json
 import secrets
 import ssl
-import struct
 import time
 import logging
 from typing import Dict, Any, Optional, Tuple, Union
@@ -14,13 +13,11 @@ from typing import Dict, Any, Optional, Tuple, Union
 from .constants import (
     DEFAULT_TCP_PORT,
     DEFAULT_TIMEOUT,
-    MAX_PAYLOAD_SIZE,
     FACTORY_RESET_IP,
     COMMAND_TYPE_EXECUTE,
     COMMAND_TYPE_QUERY_DEVICE_STATES,
     COMMAND_TYPE_QUERY_DEVICE_INFO,
     COMMAND_TYPE_SSID_CONNECT,
-    STATUS_SUCCESS,
 )
 from .exceptions import (
     DLightError,
@@ -29,6 +26,7 @@ from .exceptions import (
     DLightCommandError,
     DLightResponseError,
 )
+from ._frame import encode_command, mask_command, read_response
 from .models import CommandResult
 
 # Logger specific to the client, inheriting from the base logger if needed
@@ -156,21 +154,9 @@ class AsyncDLightClient:
             ssl_identifier = f"ctx_{id(ssl)}"
         key = f"{target_ip}:{port}:{ssl_identifier}"
 
-        # 1. Prepare masked command for logging/errors
-        log_command = command
-        if "password" in command or "ssid" in command:
-            log_command = command.copy()
-            if "password" in log_command:
-                log_command["password"] = "********"
-            if "ssid" in log_command:
-                log_command["ssid"] = "********"
-
-        # 2. Serialize command to JSON bytes
-        try:
-            json_data = json.dumps(command).encode("utf-8")
-            _LOGGER.debug(f"Serialized command ({len(json_data)} bytes): {json.dumps(log_command)!r}")
-        except TypeError as e:
-            raise DLightCommandError(f"Failed to serialize command to JSON: {e}\nCommand: {log_command}") from e
+        # 1. Serialize command to JSON bytes (raises DLightCommandError)
+        json_data = encode_command(command)
+        _LOGGER.debug(f"Serialized command ({len(json_data)} bytes): {json.dumps(mask_command(command))!r}")
 
         # Ensure we have a lock for this connection key to avoid concurrent access during setup
         for attempt in range(self.max_retries + 1):
@@ -236,86 +222,14 @@ class AsyncDLightClient:
                             del self._connections[key]
                         raise DLightConnectionError(f"Network error sending data for {operation}: {e}") from e
 
-                    # 4. Read response header (4 bytes) with timeout
-                    _LOGGER.debug(f"Reading header (4 bytes) for {operation}")
-                    header = b""
+                    # 4. Read and validate the framed response
                     try:
-                        header = await asyncio.wait_for(reader.readexactly(4), timeout=self.default_timeout)
-                        _LOGGER.debug(f"Received header: {header!r} (Hex: {header.hex()})")
-                    except asyncio.TimeoutError:
-                        raise DLightTimeoutError(f"Timeout reading header for {operation}") from None
-                    except asyncio.IncompleteReadError as e:
+                        response = await read_response(reader, self.default_timeout, operation, command=command)
+                    except (DLightConnectionError, DLightResponseError):
+                        # A connection that failed mid-read cannot be reused.
                         if key in self._connections:
                             del self._connections[key]
-                        raise DLightResponseError(
-                            f"Connection closed unexpectedly while reading header for {operation}. "
-                            f"Expected 4 bytes, got {len(e.partial)}: {e.partial!r}"
-                        ) from e
-                    except OSError as e:
-                        if key in self._connections:
-                            del self._connections[key]
-                        raise DLightConnectionError(f"Network error reading header for {operation}: {e}") from e
-
-                    # 5. Decode header to get payload length
-                    payload_length = struct.unpack(">I", header)[0]
-                    _LOGGER.debug(f"Decoded header, expected payload length: {payload_length}")
-
-                    # 6. Validate payload length
-                    if payload_length > MAX_PAYLOAD_SIZE:
-                        raise DLightResponseError(
-                            f"Payload length {payload_length} exceeds maximum limit {MAX_PAYLOAD_SIZE}"
-                        )
-
-                    # 7. Read response payload with timeout
-                    payload_bytes = b""
-                    if payload_length > 0:
-                        _LOGGER.debug(f"Reading payload ({payload_length} bytes) for {operation}")
-                        try:
-                            payload_bytes = await asyncio.wait_for(
-                                reader.readexactly(payload_length), timeout=self.default_timeout
-                            )
-                        except asyncio.TimeoutError:
-                            raise DLightTimeoutError(
-                                f"Timeout reading payload ({payload_length} bytes) for {operation}"
-                            ) from None
-                        except asyncio.IncompleteReadError as e:
-                            if key in self._connections:
-                                del self._connections[key]
-                            raise DLightResponseError(
-                                f"Connection closed unexpectedly while reading payload for {operation}."
-                            ) from e
-                        except OSError as e:
-                            if key in self._connections:
-                                del self._connections[key]
-                            raise DLightConnectionError(f"Network error reading payload for {operation}: {e}") from e
-
-                    # 8. Deserialize JSON payload
-                    response: CommandResult = {}
-                    if payload_length == 0:
-                        response = {"status": STATUS_SUCCESS, "_payload_length": 0}
-                    else:
-                        try:
-                            response = json.loads(payload_bytes.decode("utf-8"))
-                        except json.JSONDecodeError as e:
-                            raise DLightResponseError(
-                                f"Failed to decode JSON payload: {e}\nRaw Payload: {payload_bytes!r}"
-                            ) from e
-                        except UnicodeDecodeError as e:
-                            raise DLightResponseError(
-                                f"Failed to decode payload as UTF-8: {e}\nRaw Payload: {payload_bytes!r}"
-                            ) from e
-                        except Exception as e:
-                            raise DLightResponseError(f"Failed to decode response: {e}") from e
-
-                    # Check for echoed command
-                    if payload_length > 0 and response == command:
-                        raise DLightResponseError("Device echoed back the command (unrecognized?).")
-
-                    # 9. Check response status
-                    if response.get("_payload_length") != 0:
-                        status = response.get("status")
-                        if status != STATUS_SUCCESS:
-                            raise DLightResponseError(f"dLight returned non-SUCCESS status: '{status}'")
+                        raise
 
                     return response
 
