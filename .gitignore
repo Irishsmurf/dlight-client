@@ -11,3 +11,5 @@ build/
 *.egg
 *.log
 .pytest_cache/
+.coverage
+coverage.xml
