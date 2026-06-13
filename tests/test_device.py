@@ -467,5 +467,133 @@ class TestAsyncDLightClientTCPErrorHandling(unittest.IsolatedAsyncioTestCase):
         mock_writer.close.assert_called_once()
 
 
+@unittest.skipIf(not _IMPORT_SUCCESS, "Skipping listener tests due to import failure.")
+class TestDLightDeviceStateListeners(unittest.IsolatedAsyncioTestCase):
+    """Tests for DLightDevice.on_state_change / remove_state_listener."""
+
+    def setUp(self):
+        self.mock_client = AsyncMock(spec=AsyncDLightClient)
+        self.device = DLightDevice("192.168.1.1", "lamp1", self.mock_client)
+        self.mock_client.set_light_state.return_value = {"status": STATUS_SUCCESS}
+        self.mock_client.set_brightness.return_value = {"status": STATUS_SUCCESS}
+        self.mock_client.set_color_temperature.return_value = {"status": STATUS_SUCCESS}
+        self.mock_client.query_device_state.return_value = {
+            "status": STATUS_SUCCESS,
+            "states": {"on": True, "brightness": 80},
+        }
+
+    # --- Registration ---
+
+    def test_duplicate_registration_ignored(self):
+        def cb(d, o, n):
+            pass
+        self.device.on_state_change(cb)
+        self.device.on_state_change(cb)
+        self.assertEqual(len(self.device._state_listeners), 1)
+
+    async def test_remove_listener(self):
+        events = []
+        self.device.on_state_change(lambda d, o, n: events.append(n))
+        self.device.remove_state_listener(self.device._state_listeners[0])
+        # trigger — no event expected
+        await self.device.turn_on()
+        self.assertEqual(events, [])
+
+    def test_remove_unregistered_listener_is_silent(self):
+        self.device.remove_state_listener(lambda d, o, n: None)  # must not raise
+
+    # --- Sync callback fires on each mutating method ---
+
+    async def test_listener_called_on_turn_on(self):
+        events = []
+        self.device.on_state_change(lambda d, o, n: events.append((o, n)))
+        await self.device.turn_on()
+        self.assertEqual(events, [({}, {"on": True})])
+
+    async def test_listener_called_on_turn_off(self):
+        self.device._state = {"on": True}
+        events = []
+        self.device.on_state_change(lambda d, o, n: events.append((o, n)))
+        await self.device.turn_off()
+        self.assertEqual(events, [({"on": True}, {"on": False})])
+
+    async def test_listener_called_on_set_brightness(self):
+        self.device._state = {"on": True}
+        events = []
+        self.device.on_state_change(lambda d, o, n: events.append((o, n)))
+        await self.device.set_brightness(75)
+        self.assertEqual(events, [({"on": True}, {"on": True, "brightness": 75})])
+
+    async def test_listener_called_on_set_color_temperature(self):
+        self.device._state = {"on": True}
+        events = []
+        self.device.on_state_change(lambda d, o, n: events.append((o, n)))
+        await self.device.set_color_temperature(4000)
+        self.assertEqual(events, [({"on": True}, {"on": True, "color": {"temperature": 4000}})])
+
+    async def test_listener_called_on_get_state(self):
+        events = []
+        self.device.on_state_change(lambda d, o, n: events.append((o, n)))
+        await self.device.get_state()
+        self.assertEqual(events, [({}, {"on": True, "brightness": 80})])
+
+    async def test_listener_not_called_when_cache_returned(self):
+        self.device._state = {"on": True}
+        events = []
+        self.device.on_state_change(lambda d, o, n: events.append(n))
+        await self.device.get_state()  # cache hit — no network call, no event
+        self.assertEqual(events, [])
+
+    # --- Rollback suppresses callback ---
+
+    async def test_listener_not_called_on_rollback(self):
+        """On network failure the state rolls back to old; old == new so no event fires."""
+        self.mock_client.set_light_state.side_effect = Exception("network error")
+        events = []
+        self.device.on_state_change(lambda d, o, n: events.append(n))
+        with self.assertRaises(Exception):
+            await self.device.turn_on()
+        self.assertEqual(events, [])
+
+    # --- Callback receives the device instance ---
+
+    async def test_callback_receives_device_instance(self):
+        received = []
+        self.device.on_state_change(lambda d, o, n: received.append(d))
+        await self.device.turn_on()
+        self.assertIs(received[0], self.device)
+
+    # --- Async callbacks ---
+
+    async def test_async_listener_is_called(self):
+        events = []
+
+        async def async_cb(device, old, new):
+            events.append(new)
+
+        self.device.on_state_change(async_cb)
+        await self.device.turn_on()
+        # Yield control so the scheduled task runs
+        await asyncio.sleep(0)
+        self.assertEqual(events, [{"on": True}])
+
+    # --- Error isolation ---
+
+    async def test_sync_listener_error_does_not_propagate(self):
+        def bad_cb(d, o, n):
+            raise RuntimeError("boom")
+
+        self.device.on_state_change(bad_cb)
+        # Must not raise even though the callback raises
+        await self.device.turn_on()
+
+    async def test_multiple_listeners_all_called(self):
+        results = []
+        self.device.on_state_change(lambda d, o, n: results.append("a"))
+        self.device.on_state_change(lambda d, o, n: results.append("b"))
+        await self.device.turn_on()
+        self.assertEqual(sorted(results), ["a", "b"])
+
+
 if __name__ == "__main__":
     unittest.main()

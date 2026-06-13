@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `DLightDevice.on_state_change(cb)` and `remove_state_listener(cb)` — register sync or async
+  callbacks that fire whenever device state settles to a new value. Callbacks receive
+  `(device, old_state, new_state)`; async callables are scheduled without blocking the caller.
+
+### Fixed
+- `turn_on()` and `turn_off()` rollback now correctly removes the `"on"` key when it was absent
+  before the command, rather than setting it to a default value.
+
 ## [1.6.1] — 2026-06-10
 
 ### Changed
