@@ -37,7 +37,7 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
     def __init__(
         self,
         discovered_devices_set: Set[str],
-        results_list: List[Dict[str, Any]],
+        results_list: Optional[List[Dict[str, Any]]] = None,
         queue: Optional[asyncio.Queue[Dict[str, Any]]] = None,
     ):
         self.transport: Optional[asyncio.DatagramTransport] = None
@@ -69,7 +69,8 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
 
             # Add to results if successfully parsed
             self.discovered_devices_set.add(ip_address)
-            self.results_list.append(device_info)
+            if self.results_list is not None:
+                self.results_list.append(device_info)
             if self.queue is not None:
                 self.queue.put_nowait(device_info)
 
@@ -230,7 +231,6 @@ async def discover_devices_stream(
     """
     loop = asyncio.get_running_loop()
     discovered_devices_set: Set[str] = set()
-    results_list: List[Dict[str, Any]] = []
     queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
     listen_transport: Optional[asyncio.DatagramTransport] = None
     send_transport: Optional[asyncio.DatagramTransport] = None
@@ -245,7 +245,7 @@ async def discover_devices_stream(
 
         # 1. Create the listening endpoint
         listen_transport, _ = await loop.create_datagram_endpoint(
-            lambda: _DiscoveryProtocol(discovered_devices_set, results_list, queue),
+            lambda: _DiscoveryProtocol(discovered_devices_set, queue=queue),
             local_addr=("0.0.0.0", response_port),
         )
         _LOGGER.debug(f"Listening for discovery responses on 0.0.0.0:{response_port}")
@@ -288,6 +288,13 @@ async def discover_devices_stream(
                 device = await asyncio.wait_for(queue.get(), timeout=remaining)
                 yield device
             except asyncio.TimeoutError:
+                break
+
+        # Yield any remaining devices that responded and were queued up but not yet yielded
+        while not queue.empty():
+            try:
+                yield queue.get_nowait()
+            except asyncio.QueueEmpty:
                 break
 
         _LOGGER.info(f"Discovery stream finished. Found {len(discovered_devices_set)} potential device(s).")

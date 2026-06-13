@@ -760,6 +760,58 @@ class TestAsyncDLightClientUDPStream(unittest.IsolatedAsyncioTestCase):
             await stream_task
             self.assertEqual(len(devices), 1)
 
+    async def test_discover_devices_stream_drains_queue_on_timeout(self):
+        """Test discover_devices_stream yields items remaining in the queue after timeout."""
+        loop = asyncio.get_running_loop()
+        mock_listen_transport = AsyncMock(spec=asyncio.DatagramTransport)
+        mock_send_transport = AsyncMock(spec=asyncio.DatagramTransport)
+        mock_send_sock = MagicMock(spec=socket.socket)
+        mock_send_transport.get_extra_info.return_value = mock_send_sock
+
+        protocol_instance_holder = [None]
+        await_count = 0
+
+        async def mock_create_datagram_endpoint(protocol_factory, local_addr=None, remote_addr=None, **kwargs):
+            nonlocal await_count
+            await_count += 1
+            if await_count == 1:
+                proto = protocol_factory()
+                protocol_instance_holder[0] = proto
+                return (mock_listen_transport, proto)
+            else:
+                return (mock_send_transport, MagicMock())
+
+        with patch.object(loop, "create_datagram_endpoint", new=mock_create_datagram_endpoint):
+            dev1_ip = "192.168.1.101"
+            dev1_payload = {"deviceModel": "M1", "deviceId": "dev1"}
+            dev1_bytes = json.dumps(dev1_payload).encode("utf-8")
+
+            dev2_ip = "192.168.1.102"
+            dev2_payload = {"deviceModel": "M2", "deviceId": "dev2"}
+            dev2_bytes = json.dumps(dev2_payload).encode("utf-8")
+
+            gen = discover_devices_stream(timeout=0.01)
+
+            step_task = asyncio.create_task(gen.__anext__())
+            await asyncio.sleep(0.005)
+
+            proto_instance = protocol_instance_holder[0]
+            self.assertIsNotNone(proto_instance)
+
+            proto_instance.datagram_received(dev1_bytes, (dev1_ip, 12345))
+            proto_instance.datagram_received(dev2_bytes, (dev2_ip, 12345))
+
+            first_dev = await step_task
+            self.assertEqual(first_dev["deviceId"], "dev1")
+
+            await asyncio.sleep(0.02)
+
+            second_dev = await gen.__anext__()
+            self.assertEqual(second_dev["deviceId"], "dev2")
+
+            with self.assertRaises(StopAsyncIteration):
+                await gen.__anext__()
+
     async def test_discover_devices_stream_permission_error(self):
         """Test discover_devices_stream handling of PermissionError during bind."""
         loop = asyncio.get_running_loop()
