@@ -1417,6 +1417,11 @@
 <td>Powers the lamp off.</td>
 </tr>
 <tr>
+<td><code>toggle()</code></td>
+<td>—</td>
+<td>Toggles power on/off; uses the state cache to avoid an extra network call.</td>
+</tr>
+<tr>
 <td><code>set_brightness(brightness)</code></td>
 <td><code>int</code> 0–100</td>
 <td>Sets brightness as a percentage.</td>
@@ -1431,6 +1436,7 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">turn_on</span><span class="p">()</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">set_brightness</span><span class="p">(</span><span class="mi">80</span><span class="p">)</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">set_color_temperature</span><span class="p">(</span><span class="mi">2700</span><span class="p">)</span>  <span class="c1"># warm, candle-like</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">toggle</span><span class="p">()</span>                     <span class="c1"># off → on, or on → off</span>
 </code></pre></div>
 <h3 id="colour-temperature-range">Colour temperature range<a class="headerlink" href="#colour-temperature-range" title="Permanent link">&para;</a></h3>
 <p><img alt="Colour temperature range 2600 K to 6000 K" src="../../assets/brand/color-temp.svg" /></p>
