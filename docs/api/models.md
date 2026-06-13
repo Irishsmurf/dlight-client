@@ -2,10 +2,38 @@
 
 dlight-client uses `TypedDict` classes to represent structured data returned from device calls. These provide IDE autocompletion and static type-checking support without imposing runtime overhead.
 
-All models are importable from `dlightclient.models`:
+All models are importable from `dlightclient.models` (or directly from `dlightclient`):
 
 ```python
+from dlightclient import LightScene
 from dlightclient.models import DeviceState, DeviceInfo, CommandResult, ColorState
+```
+
+## `LightScene`
+
+```python
+@dataclass(frozen=True)
+class LightScene:
+    brightness: int   # 0–100
+    temperature: int  # 2600–6000 K
+```
+
+An immutable brightness + colour temperature preset. Pass it to `DLightDevice.apply_scene()`.
+
+Four built-in scenes are provided as class attributes:
+
+| Name | `brightness` | `temperature` |
+|---|---|---|
+| `LightScene.READING` | 70 | 4000 K |
+| `LightScene.EVENING` | 30 | 2700 K |
+| `LightScene.DAYLIGHT` | 100 | 6000 K |
+| `LightScene.FOCUS` | 100 | 5000 K |
+
+Custom scenes can be constructed inline:
+
+```python
+MOVIE_NIGHT = LightScene(brightness=20, temperature=2700)
+await lamp.apply_scene(MOVIE_NIGHT)
 ```
 
 ## `ColorState`

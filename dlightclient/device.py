@@ -8,7 +8,7 @@ from typing import Callable, Optional
 # Import necessary components from the library
 from .client import AsyncDLightClient
 from .exceptions import DLightError, DLightTimeoutError, DLightResponseError
-from .models import CommandResult, DeviceState, DeviceInfo
+from .models import CommandResult, DeviceState, DeviceInfo, LightScene
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -233,6 +233,86 @@ class DLightDevice:
             return True
         except DLightError:
             return False
+
+    async def apply_scene(
+        self,
+        scene: Optional[LightScene] = None,
+        *,
+        brightness: Optional[int] = None,
+        temperature: Optional[int] = None,
+    ) -> tuple[CommandResult, CommandResult]:
+        """Applies a lighting scene (brightness + colour temperature) in one call.
+
+        Accepts either a :class:`LightScene` object or explicit keyword args::
+
+            await device.apply_scene(LightScene.READING)
+            await device.apply_scene(brightness=90, temperature=5000)
+
+        Both fields are updated in the state cache atomically before the network
+        calls, and rolled back together if either command fails.
+
+        Args:
+            scene: A :class:`LightScene` preset. When provided, ``brightness``
+                and ``temperature`` keyword args are ignored.
+            brightness: Brightness percentage (0–100). Required when ``scene``
+                is not given.
+            temperature: Colour temperature in Kelvin (2600–6000). Required
+                when ``scene`` is not given.
+
+        Returns:
+            A ``(brightness_result, temperature_result)`` tuple of
+            :class:`CommandResult` dicts from the device.
+
+        Raises:
+            ValueError: If ``scene`` is ``None`` and either ``brightness`` or
+                ``temperature`` is not provided.
+        """
+        if scene is not None:
+            brightness = scene.brightness
+            temperature = scene.temperature
+        else:
+            if brightness is None or temperature is None:
+                raise ValueError(
+                    "Provide a LightScene object or both brightness and temperature keyword args"
+                )
+
+        _LOGGER.info(
+            f"Device {self.id}: Applying scene (brightness={brightness}%, temperature={temperature}K)"
+        )
+
+        _old = self._clone_state(self._state)
+
+        # Save current values for rollback
+        old_brightness = self._state.get("brightness")
+        old_color = self._state.get("color")
+        if old_color is not None:
+            old_color = old_color.copy()
+
+        # Optimistic update — both fields in one step before any network call
+        self._state["brightness"] = brightness
+        self._state.setdefault("color", {})["temperature"] = temperature
+
+        try:
+            results = await asyncio.gather(
+                self._client.set_brightness(self.ip, self.id, brightness),
+                self._client.set_color_temperature(self.ip, self.id, temperature),
+            )
+            return tuple(results)  # type: ignore[return-value]
+        except Exception:
+            # Roll back both fields atomically
+            if old_brightness is not None:
+                self._state["brightness"] = old_brightness
+            elif "brightness" in self._state:
+                del self._state["brightness"]
+
+            if old_color is not None:
+                self._state["color"] = old_color
+            elif "color" in self._state:
+                del self._state["color"]
+
+            raise
+        finally:
+            self._emit_state_change(_old, self._clone_state(self._state))
 
     async def flash(
         self,

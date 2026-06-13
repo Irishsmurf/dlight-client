@@ -10,6 +10,7 @@ try:
     from dlightclient import (
         AsyncDLightClient,
         DLightDevice,
+        LightScene,
         DLightError,
         DLightConnectionError,
         DLightTimeoutError,
@@ -34,6 +35,9 @@ except ImportError as e:
     # Define dummy classes/variables if import fails
     DEVICE_MODULE_PATH = "dlightclient.device"
     CLIENT_MODULE_PATH = "dlightclient.client"
+
+    class LightScene:
+        pass
 
     class DLightError(Exception):
         pass
@@ -643,6 +647,74 @@ class TestDLightDeviceStateListeners(unittest.IsolatedAsyncioTestCase):
         self.device.on_state_change(lambda d, o, n: results.append("b"))
         await self.device.turn_on()
         self.assertEqual(sorted(results), ["a", "b"])
+
+
+@unittest.skipIf(not _IMPORT_SUCCESS, "Skipping apply_scene tests due to import failure.")
+class TestDLightDeviceApplyScene(unittest.IsolatedAsyncioTestCase):
+    """Tests for DLightDevice.apply_scene()."""
+
+    def setUp(self):
+        self.test_ip = "192.168.1.55"
+        self.test_id = "test-device-id-123"
+        self.mock_client = AsyncMock(spec=AsyncDLightClient)
+        self.device = DLightDevice(self.test_ip, self.test_id, self.mock_client)
+        self.mock_client.set_brightness.return_value = {"status": STATUS_SUCCESS}
+        self.mock_client.set_color_temperature.return_value = {"status": STATUS_SUCCESS}
+
+    def test_builtin_scenes_have_correct_values(self):
+        self.assertEqual(LightScene.READING,  LightScene(brightness=70, temperature=4000))
+        self.assertEqual(LightScene.EVENING,  LightScene(brightness=30, temperature=2700))
+        self.assertEqual(LightScene.DAYLIGHT, LightScene(brightness=100, temperature=6000))
+        self.assertEqual(LightScene.FOCUS,    LightScene(brightness=100, temperature=5000))
+
+    async def test_apply_scene_with_scene_object(self):
+        result = await self.device.apply_scene(LightScene.READING)
+        self.mock_client.set_brightness.assert_awaited_once_with(self.test_ip, self.test_id, 70)
+        self.mock_client.set_color_temperature.assert_awaited_once_with(self.test_ip, self.test_id, 4000)
+        self.assertEqual(result, ({"status": STATUS_SUCCESS}, {"status": STATUS_SUCCESS}))
+
+    async def test_apply_scene_with_keyword_args(self):
+        result = await self.device.apply_scene(brightness=90, temperature=5000)
+        self.mock_client.set_brightness.assert_awaited_once_with(self.test_ip, self.test_id, 90)
+        self.mock_client.set_color_temperature.assert_awaited_once_with(self.test_ip, self.test_id, 5000)
+        self.assertIsNotNone(result)
+
+    async def test_apply_scene_updates_cache(self):
+        await self.device.apply_scene(LightScene.FOCUS)
+        self.assertEqual(self.device._state["brightness"], 100)
+        self.assertEqual(self.device._state["color"]["temperature"], 5000)
+
+    async def test_apply_scene_missing_args_raises(self):
+        with self.assertRaises(ValueError):
+            await self.device.apply_scene()
+        with self.assertRaises(ValueError):
+            await self.device.apply_scene(brightness=50)
+        with self.assertRaises(ValueError):
+            await self.device.apply_scene(temperature=3000)
+
+    async def test_apply_scene_rolls_back_on_error(self):
+        self.device._state = {"brightness": 50, "color": {"temperature": 3000}}
+        self.mock_client.set_brightness.side_effect = DLightTimeoutError("timeout")
+        with self.assertRaises(DLightTimeoutError):
+            await self.device.apply_scene(brightness=80, temperature=4000)
+        self.assertEqual(self.device._state.get("brightness"), 50)
+        self.assertEqual(self.device._state.get("color", {}).get("temperature"), 3000)
+
+    async def test_apply_scene_does_not_fire_listener_on_rollback(self):
+        self.mock_client.set_brightness.side_effect = DLightTimeoutError("timeout")
+        events = []
+        self.device.on_state_change(lambda d, o, n: events.append(n))
+        with self.assertRaises(DLightTimeoutError):
+            await self.device.apply_scene(brightness=80, temperature=4000)
+        self.assertEqual(events, [])
+
+    async def test_apply_scene_fires_listener_on_success(self):
+        events = []
+        self.device.on_state_change(lambda d, o, n: events.append(n))
+        await self.device.apply_scene(LightScene.EVENING)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["brightness"], 30)
+        self.assertEqual(events[0]["color"]["temperature"], 2700)
 
 
 @unittest.skipIf(not _IMPORT_SUCCESS, "Skipping ping tests due to import failure.")

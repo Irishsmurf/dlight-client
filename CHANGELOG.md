@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `LightScene` — immutable dataclass holding a `brightness` + `temperature` preset. Four built-in
+  scenes provided: `LightScene.READING` (70%, 4000 K), `LightScene.EVENING` (30%, 2700 K),
+  `LightScene.DAYLIGHT` (100%, 6000 K), `LightScene.FOCUS` (100%, 5000 K).
+- `DLightDevice.apply_scene(scene, *, brightness, temperature)` — applies a `LightScene` or inline
+  brightness + temperature in one call. Both cache fields are updated atomically and rolled back
+  together on failure. State-change listeners are notified once after both commands complete.
 - `DLightDevice.ping(timeout=2.0)` — lightweight connectivity health check; returns `True` if the
   device responds to a `QUERY_DEVICE_INFO` probe, `False` on timeout or connection refused. Never
   raises. Accepts a `timeout` parameter that overrides the client default for that call only.

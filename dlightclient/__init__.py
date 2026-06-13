@@ -21,6 +21,7 @@ from .constants import (
     MAX_PAYLOAD_SIZE,
     STATUS_SUCCESS,
 )
+from .models import LightScene
 from .exceptions import (
     DLightError,
     DLightConnectionError,
@@ -57,6 +58,7 @@ __all__ = [
     "STATUS_SUCCESS",
     # Device
     "DLightDevice",
+    "LightScene",
     # Version
     "__version__",
 ]

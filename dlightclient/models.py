@@ -1,6 +1,7 @@
 """Defines structured data models for dLight device data."""
 
-from typing import TypedDict
+from dataclasses import dataclass
+from typing import ClassVar, TypedDict
 
 
 class ColorState(TypedDict):
@@ -34,3 +35,28 @@ class CommandResult(TypedDict, total=False):
     commandId: str
     deviceId: str
     states: DeviceState
+
+
+@dataclass(frozen=True)
+class LightScene:
+    """A brightness + colour temperature preset.
+
+    Can be used as a named constant or constructed inline::
+
+        await device.apply_scene(LightScene.READING)
+        await device.apply_scene(LightScene(brightness=50, temperature=3500))
+    """
+
+    brightness: int
+    temperature: int
+
+    READING:  ClassVar["LightScene"]
+    EVENING:  ClassVar["LightScene"]
+    DAYLIGHT: ClassVar["LightScene"]
+    FOCUS:    ClassVar["LightScene"]
+
+
+LightScene.READING  = LightScene(brightness=70, temperature=4000)
+LightScene.EVENING  = LightScene(brightness=30, temperature=2700)
+LightScene.DAYLIGHT = LightScene(brightness=100, temperature=6000)
+LightScene.FOCUS    = LightScene(brightness=100, temperature=5000)
