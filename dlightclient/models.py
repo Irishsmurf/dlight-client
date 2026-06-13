@@ -50,13 +50,13 @@ class LightScene:
     brightness: int
     temperature: int
 
-    READING:  ClassVar["LightScene"]
-    EVENING:  ClassVar["LightScene"]
+    READING: ClassVar["LightScene"]
+    EVENING: ClassVar["LightScene"]
     DAYLIGHT: ClassVar["LightScene"]
-    FOCUS:    ClassVar["LightScene"]
+    FOCUS: ClassVar["LightScene"]
 
 
-LightScene.READING  = LightScene(brightness=70, temperature=4000)
-LightScene.EVENING  = LightScene(brightness=30, temperature=2700)
+LightScene.READING = LightScene(brightness=70, temperature=4000)
+LightScene.EVENING = LightScene(brightness=30, temperature=2700)
 LightScene.DAYLIGHT = LightScene(brightness=100, temperature=6000)
-LightScene.FOCUS    = LightScene(brightness=100, temperature=5000)
+LightScene.FOCUS = LightScene(brightness=100, temperature=5000)
