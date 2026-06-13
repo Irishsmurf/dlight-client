@@ -124,6 +124,45 @@ class TestDLightDevice(unittest.IsolatedAsyncioTestCase):
         self.mock_client.set_light_state.assert_awaited_once_with(self.test_ip, self.test_id, False)
         self.assertEqual(response, expected_response)
 
+    async def test_toggle_on_to_off(self):
+        """Toggle with cached on=True turns the light off."""
+        self.device._state = {"on": True}
+        expected_response = {"status": STATUS_SUCCESS}
+        self.mock_client.set_light_state.return_value = expected_response
+
+        response = await self.device.toggle()
+
+        self.mock_client.set_light_state.assert_awaited_once_with(self.test_ip, self.test_id, False)
+        self.mock_client.query_device_state.assert_not_awaited()
+        self.assertEqual(response, expected_response)
+
+    async def test_toggle_off_to_on(self):
+        """Toggle with cached on=False turns the light on."""
+        self.device._state = {"on": False}
+        expected_response = {"status": STATUS_SUCCESS}
+        self.mock_client.set_light_state.return_value = expected_response
+
+        response = await self.device.toggle()
+
+        self.mock_client.set_light_state.assert_awaited_once_with(self.test_ip, self.test_id, True)
+        self.mock_client.query_device_state.assert_not_awaited()
+        self.assertEqual(response, expected_response)
+
+    async def test_toggle_with_empty_cache(self):
+        """Toggle with empty cache fetches state first then toggles."""
+        self.mock_client.query_device_state.return_value = {
+            "status": STATUS_SUCCESS,
+            "states": {"on": True},
+        }
+        expected_response = {"status": STATUS_SUCCESS}
+        self.mock_client.set_light_state.return_value = expected_response
+
+        response = await self.device.toggle()
+
+        self.mock_client.query_device_state.assert_awaited_once_with(self.test_ip, self.test_id)
+        self.mock_client.set_light_state.assert_awaited_once_with(self.test_ip, self.test_id, False)
+        self.assertEqual(response, expected_response)
+
     async def test_set_brightness(self):
         """Test the set_brightness method."""
         test_brightness = 75
@@ -530,6 +569,13 @@ class TestDLightDeviceStateListeners(unittest.IsolatedAsyncioTestCase):
         self.device.on_state_change(lambda d, o, n: events.append((o, n)))
         await self.device.set_color_temperature(4000)
         self.assertEqual(events, [({"on": True}, {"on": True, "color": {"temperature": 4000}})])
+
+    async def test_listener_called_on_toggle(self):
+        self.device._state = {"on": False}
+        events = []
+        self.device.on_state_change(lambda d, o, n: events.append((o, n)))
+        await self.device.toggle()
+        self.assertEqual(events, [({"on": False}, {"on": True})])
 
     async def test_listener_called_on_get_state(self):
         events = []

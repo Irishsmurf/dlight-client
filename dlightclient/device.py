@@ -98,6 +98,22 @@ class DLightDevice:
         finally:
             self._emit_state_change(_old, self._clone_state(self._state))
 
+    async def toggle(self) -> CommandResult:
+        """Toggles the light on or off.
+
+        Uses the cached state where available to avoid a network round-trip.
+        Falls back to get_state() if the cache is empty.
+
+        Returns:
+            The response from the device.
+        """
+        _LOGGER.info(f"Device {self.id}: Toggling")
+        if "on" not in self._state:
+            await self.get_state()
+        if self._state.get("on"):
+            return await self.turn_off()
+        return await self.turn_on()
+
     async def set_brightness(self, brightness: int) -> CommandResult:
         """Sets the brightness of the light.
 

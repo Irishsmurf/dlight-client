@@ -29,6 +29,7 @@ All methods are `async` and return a `CommandResult` dict on success.
 |---|---|---|
 | `turn_on()` | — | Powers the lamp on. |
 | `turn_off()` | — | Powers the lamp off. |
+| `toggle()` | — | Toggles power on/off; uses the state cache to avoid an extra network call. |
 | `set_brightness(brightness)` | `int` 0–100 | Sets brightness as a percentage. |
 | `set_color_temperature(temperature)` | `int` 2600–6000 | Sets colour temperature in Kelvin. |
 
@@ -36,6 +37,7 @@ All methods are `async` and return a `CommandResult` dict on success.
 await lamp.turn_on()
 await lamp.set_brightness(80)
 await lamp.set_color_temperature(2700)  # warm, candle-like
+await lamp.toggle()                     # off → on, or on → off
 ```
 
 ### Colour temperature range
