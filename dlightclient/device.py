@@ -2,8 +2,9 @@
 """Provides a DLightDevice class for object-oriented interaction."""
 
 import asyncio
+import copy
 import logging
-from typing import Optional
+from typing import Callable, Optional
 
 # Import necessary components from the library
 from .client import AsyncDLightClient
@@ -43,6 +44,7 @@ class DLightDevice:
         self._id = device_id
         self._client = client
         self._state: DeviceState = {}
+        self._state_listeners: list[Callable] = []
         _LOGGER.debug(f"DLightDevice initialized: ID='{self._id}', IP='{self._ip}'")
 
     @property
@@ -62,13 +64,19 @@ class DLightDevice:
             The response from the device.
         """
         _LOGGER.info(f"Device {self.id}: Turning ON (optimistic)")
+        _old = copy.deepcopy(self._state)
         old_on = self._state.get("on")
         self._state["on"] = True
         try:
             return await self._client.set_light_state(self.ip, self.id, True)
         except Exception:
-            self._state["on"] = old_on if old_on is not None else False
+            if old_on is not None:
+                self._state["on"] = old_on
+            else:
+                del self._state["on"]
             raise
+        finally:
+            self._emit_state_change(_old, copy.deepcopy(self._state))
 
     async def turn_off(self) -> CommandResult:
         """Turns the light off.
@@ -77,13 +85,19 @@ class DLightDevice:
             The response from the device.
         """
         _LOGGER.info(f"Device {self.id}: Turning OFF (optimistic)")
+        _old = copy.deepcopy(self._state)
         old_on = self._state.get("on")
         self._state["on"] = False
         try:
             return await self._client.set_light_state(self.ip, self.id, False)
         except Exception:
-            self._state["on"] = old_on if old_on is not None else True
+            if old_on is not None:
+                self._state["on"] = old_on
+            else:
+                del self._state["on"]
             raise
+        finally:
+            self._emit_state_change(_old, copy.deepcopy(self._state))
 
     async def set_brightness(self, brightness: int) -> CommandResult:
         """Sets the brightness of the light.
@@ -98,6 +112,7 @@ class DLightDevice:
             ValueError: If brightness is outside the valid range [0, 100].
         """
         _LOGGER.info(f"Device {self.id}: Setting brightness to {brightness}% (optimistic)")
+        _old = copy.deepcopy(self._state)
         old_brightness = self._state.get("brightness")
         self._state["brightness"] = brightness
         try:
@@ -108,6 +123,8 @@ class DLightDevice:
             else:
                 del self._state["brightness"]
             raise
+        finally:
+            self._emit_state_change(_old, copy.deepcopy(self._state))
 
     async def set_color_temperature(self, temperature: int) -> CommandResult:
         """Sets the color temperature of the light.
@@ -122,6 +139,8 @@ class DLightDevice:
             ValueError: If temperature is outside the valid range [2600, 6000].
         """
         _LOGGER.info(f"Device {self.id}: Setting color temperature to {temperature}K (optimistic)")
+
+        _old = copy.deepcopy(self._state)
 
         # Save old color state for rollback
         old_color = self._state.get("color")
@@ -143,6 +162,8 @@ class DLightDevice:
             else:
                 del self._state["color"]
             raise
+        finally:
+            self._emit_state_change(_old, copy.deepcopy(self._state))
 
     async def get_state(self, force_update: bool = False) -> DeviceState:
         """Queries and returns the current state of the light.
@@ -159,10 +180,12 @@ class DLightDevice:
             _LOGGER.debug(f"Device {self.id}: Returning cached state")
             return self._state
 
+        _old = copy.deepcopy(self._state)
         _LOGGER.debug(f"Device {self.id}: Querying state")
         response = await self._client.query_device_state(self.ip, self.id)
         self._state = response.get("states", {})
         _LOGGER.debug(f"Device {self.id}: Received state: {self._state}")
+        self._emit_state_change(_old, copy.deepcopy(self._state))
         return self._state
 
     async def get_info(self) -> DeviceInfo:
@@ -288,6 +311,61 @@ class DLightDevice:
                 success = False  # Cannot guarantee original state
 
         return success
+
+    def on_state_change(self, callback: Callable) -> None:
+        """Register a listener called whenever device state settles to a new value.
+
+        The callback signature must be::
+
+            def cb(device: DLightDevice, old_state: DeviceState, new_state: DeviceState) -> None: ...
+
+        Both sync and async callables are accepted. Async callbacks are scheduled
+        with ``asyncio.ensure_future`` and do not block the caller.
+
+        Callbacks only fire for changes made through **this client instance**.
+        Physical button presses or changes from another client are not visible
+        unless you poll with ``get_state(force_update=True)``.
+
+        Args:
+            callback: The callable to register. Registering the same callable
+                twice has no effect.
+        """
+        if callback not in self._state_listeners:
+            self._state_listeners.append(callback)
+
+    def remove_state_listener(self, callback: Callable) -> None:
+        """Remove a previously registered state change listener.
+
+        Args:
+            callback: The callable to remove. Silently ignored if not registered.
+        """
+        try:
+            self._state_listeners.remove(callback)
+        except ValueError:
+            pass
+
+    def _emit_state_change(self, old: DeviceState, new: DeviceState) -> None:
+        """Fire all registered listeners if state actually changed."""
+        if not self._state_listeners or old == new:
+            return
+        for cb in list(self._state_listeners):
+            try:
+                if asyncio.iscoroutinefunction(cb):
+                    task = asyncio.ensure_future(cb(self, old, new))
+                    task.add_done_callback(self._handle_listener_task_error)
+                else:
+                    cb(self, old, new)
+            except Exception:
+                _LOGGER.exception("Device %s: error in state listener %r", self.id, cb)
+
+    def _handle_listener_task_error(self, task: "asyncio.Task[None]") -> None:
+        """Log unhandled exceptions from async state listeners."""
+        if not task.cancelled() and task.exception():
+            _LOGGER.exception(
+                "Device %s: async state listener raised an exception",
+                self.id,
+                exc_info=task.exception(),
+            )
 
     def __repr__(self) -> str:
         """Return a developer-friendly representation of the device."""

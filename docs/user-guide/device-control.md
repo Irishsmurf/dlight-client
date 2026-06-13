@@ -79,6 +79,54 @@ info = await lamp.get_info()
 
 This means `get_state()` returns immediately after a successful command without a second round-trip, and UI state is consistent even while the command is in flight.
 
+## Reacting to state changes
+
+Register a callback with `on_state_change` to be notified whenever the device state changes. Both sync and async callables are supported.
+
+```python
+def on_change(device, old_state, new_state):
+    print(f"[{device.id}] {old_state} → {new_state}")
+
+lamp.on_state_change(on_change)
+
+await lamp.turn_on()
+# [DL12345] {} → {'on': True}
+
+await lamp.set_brightness(60)
+# [DL12345] {'on': True} → {'on': True, 'brightness': 60}
+```
+
+Use an async callback to feed state into another coroutine, for example an `asyncio.Queue`:
+
+```python
+queue = asyncio.Queue()
+
+async def on_change(device, old_state, new_state):
+    await queue.put(new_state)
+
+lamp.on_state_change(on_change)
+```
+
+To stop receiving events, pass the same callable to `remove_state_listener`:
+
+```python
+lamp.remove_state_listener(on_change)
+```
+
+**Exceptions in callbacks are caught and logged** — they never interrupt the command that triggered the change.
+
+!!! warning "Physical button presses are not detected"
+    Callbacks only fire for changes made **through this client instance**. If someone physically presses the button on the lamp, or another app sends a command, the library cannot detect it automatically. To pick up external changes, call `get_state(force_update=True)` and the callback will fire if the device reports a different state than the cache:
+
+    ```python
+    # Poll every 10 s to catch external changes
+    while True:
+        await lamp.get_state(force_update=True)
+        await asyncio.sleep(10)
+    ```
+
+    A dedicated `watch()` helper that automates this is planned.
+
 ## Flash sequence
 
 ```python

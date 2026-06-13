@@ -116,6 +116,50 @@ Blink the lamp `flashes` times, then restore the previous state (power, brightne
 
 Returns `True` if the full sequence completed successfully. Returns `False` if any step failed; the previous state is still restored even on partial failure.
 
+## Event listeners
+
+### `on_state_change`
+
+```python
+def on_state_change(callback: Callable) -> None
+```
+
+Registers a callable that is invoked whenever the device state settles to a new value. Both sync and async callables are accepted. Registering the same callable twice has no effect.
+
+**Callback signature:**
+
+```python
+def cb(device: DLightDevice, old_state: DeviceState, new_state: DeviceState) -> None: ...
+```
+
+| Argument | Type | Description |
+|---|---|---|
+| `device` | `DLightDevice` | The device whose state changed. |
+| `old_state` | `DeviceState` | Snapshot of state before the change. |
+| `new_state` | `DeviceState` | Snapshot of state after the change. |
+
+Async callbacks are scheduled with `asyncio.ensure_future` and do not block the calling coroutine. Exceptions raised inside a callback are logged and suppressed — they never propagate to the caller.
+
+```python
+def on_change(device, old, new):
+    print(f"{device.id}: {old} → {new}")
+
+lamp.on_state_change(on_change)
+await lamp.turn_on()
+# prints: lamp1: {} → {'on': True}
+```
+
+### `remove_state_listener`
+
+```python
+def remove_state_listener(callback: Callable) -> None
+```
+
+Removes a previously registered listener. Silently ignored if the callable is not registered.
+
+!!! note "Limitation: physical button presses"
+    Callbacks only fire for state changes made **through this client instance**. If someone physically toggles the lamp, or another client sends a command, the library has no way to detect it. To observe external changes, poll with `get_state(force_update=True)` and the callback will fire if the returned state differs from the cache. A dedicated `watch()` polling helper is planned ([#43](https://github.com/Irishsmurf/dlight-client/issues/43)).
+
 ## State cache semantics
 
 The cache (`_state`) is a `DeviceState` dict that starts empty. It is populated:
