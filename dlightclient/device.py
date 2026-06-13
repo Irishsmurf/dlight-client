@@ -2,7 +2,6 @@
 """Provides a DLightDevice class for object-oriented interaction."""
 
 import asyncio
-import copy
 import logging
 from typing import Callable, Optional
 
@@ -64,7 +63,7 @@ class DLightDevice:
             The response from the device.
         """
         _LOGGER.info(f"Device {self.id}: Turning ON (optimistic)")
-        _old = copy.deepcopy(self._state)
+        _old = self._clone_state(self._state)
         old_on = self._state.get("on")
         self._state["on"] = True
         try:
@@ -76,7 +75,7 @@ class DLightDevice:
                 del self._state["on"]
             raise
         finally:
-            self._emit_state_change(_old, copy.deepcopy(self._state))
+            self._emit_state_change(_old, self._clone_state(self._state))
 
     async def turn_off(self) -> CommandResult:
         """Turns the light off.
@@ -85,7 +84,7 @@ class DLightDevice:
             The response from the device.
         """
         _LOGGER.info(f"Device {self.id}: Turning OFF (optimistic)")
-        _old = copy.deepcopy(self._state)
+        _old = self._clone_state(self._state)
         old_on = self._state.get("on")
         self._state["on"] = False
         try:
@@ -97,7 +96,7 @@ class DLightDevice:
                 del self._state["on"]
             raise
         finally:
-            self._emit_state_change(_old, copy.deepcopy(self._state))
+            self._emit_state_change(_old, self._clone_state(self._state))
 
     async def set_brightness(self, brightness: int) -> CommandResult:
         """Sets the brightness of the light.
@@ -112,7 +111,7 @@ class DLightDevice:
             ValueError: If brightness is outside the valid range [0, 100].
         """
         _LOGGER.info(f"Device {self.id}: Setting brightness to {brightness}% (optimistic)")
-        _old = copy.deepcopy(self._state)
+        _old = self._clone_state(self._state)
         old_brightness = self._state.get("brightness")
         self._state["brightness"] = brightness
         try:
@@ -124,7 +123,7 @@ class DLightDevice:
                 del self._state["brightness"]
             raise
         finally:
-            self._emit_state_change(_old, copy.deepcopy(self._state))
+            self._emit_state_change(_old, self._clone_state(self._state))
 
     async def set_color_temperature(self, temperature: int) -> CommandResult:
         """Sets the color temperature of the light.
@@ -140,7 +139,7 @@ class DLightDevice:
         """
         _LOGGER.info(f"Device {self.id}: Setting color temperature to {temperature}K (optimistic)")
 
-        _old = copy.deepcopy(self._state)
+        _old = self._clone_state(self._state)
 
         # Save old color state for rollback
         old_color = self._state.get("color")
@@ -163,7 +162,7 @@ class DLightDevice:
                 del self._state["color"]
             raise
         finally:
-            self._emit_state_change(_old, copy.deepcopy(self._state))
+            self._emit_state_change(_old, self._clone_state(self._state))
 
     async def get_state(self, force_update: bool = False) -> DeviceState:
         """Queries and returns the current state of the light.
@@ -180,12 +179,12 @@ class DLightDevice:
             _LOGGER.debug(f"Device {self.id}: Returning cached state")
             return self._state
 
-        _old = copy.deepcopy(self._state)
+        _old = self._clone_state(self._state)
         _LOGGER.debug(f"Device {self.id}: Querying state")
         response = await self._client.query_device_state(self.ip, self.id)
         self._state = response.get("states", {})
         _LOGGER.debug(f"Device {self.id}: Received state: {self._state}")
-        self._emit_state_change(_old, copy.deepcopy(self._state))
+        self._emit_state_change(_old, self._clone_state(self._state))
         return self._state
 
     async def get_info(self) -> DeviceInfo:
@@ -344,24 +343,30 @@ class DLightDevice:
         except ValueError:
             pass
 
+    def _clone_state(self, state: DeviceState) -> DeviceState:
+        """Shallow-clone state; deep-copies the nested color dict if present."""
+        cloned = state.copy()
+        if "color" in cloned and isinstance(cloned["color"], dict):
+            cloned["color"] = cloned["color"].copy()
+        return cloned
+
     def _emit_state_change(self, old: DeviceState, new: DeviceState) -> None:
         """Fire all registered listeners if state actually changed."""
         if not self._state_listeners or old == new:
             return
         for cb in list(self._state_listeners):
             try:
-                if asyncio.iscoroutinefunction(cb):
-                    task = asyncio.ensure_future(cb(self, old, new))
+                res = cb(self, old, new)
+                if asyncio.iscoroutine(res):
+                    task = asyncio.ensure_future(res)
                     task.add_done_callback(self._handle_listener_task_error)
-                else:
-                    cb(self, old, new)
             except Exception:
                 _LOGGER.exception("Device %s: error in state listener %r", self.id, cb)
 
     def _handle_listener_task_error(self, task: "asyncio.Task[None]") -> None:
         """Log unhandled exceptions from async state listeners."""
         if not task.cancelled() and task.exception():
-            _LOGGER.exception(
+            _LOGGER.error(
                 "Device %s: async state listener raised an exception",
                 self.id,
                 exc_info=task.exception(),

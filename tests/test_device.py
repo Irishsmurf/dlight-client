@@ -491,12 +491,12 @@ class TestDLightDeviceStateListeners(unittest.IsolatedAsyncioTestCase):
         self.device.on_state_change(cb)
         self.assertEqual(len(self.device._state_listeners), 1)
 
-    def test_remove_listener(self):
+    async def test_remove_listener(self):
         events = []
         self.device.on_state_change(lambda d, o, n: events.append(n))
         self.device.remove_state_listener(self.device._state_listeners[0])
         # trigger — no event expected
-        asyncio.get_event_loop().run_until_complete(self.device.turn_on())
+        await self.device.turn_on()
         self.assertEqual(events, [])
 
     def test_remove_unregistered_listener_is_silent(self):
