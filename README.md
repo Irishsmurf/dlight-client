@@ -10,6 +10,7 @@
 [![Python Versions](https://img.shields.io/pypi/pyversions/dlight-client.svg)](https://pypi.org/project/dlight-client/)
 [![CI](https://github.com/irishsmurf/dlight-client/actions/workflows/python-package.yml/badge.svg)](https://github.com/irishsmurf/dlight-client/actions/workflows/python-package.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen.svg)](https://github.com/irishsmurf/dlight-client/actions/workflows/python-package.yml)
 
 ---
 
