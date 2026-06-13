@@ -1,196 +1,88 @@
-# python-dlight-client - Async Python Client for dLight API
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/dark_logo.svg">
+  <img alt="dlight-client" src="docs/assets/brand/logo.svg" height="72">
+</picture>
+
+> Async Python library for discovering and controlling dLight smart lamps over local Wi-Fi.
+> Pure asyncio. Zero dependencies.
 
 [![PyPI version](https://badge.fury.io/py/dlight-client.svg)](https://badge.fury.io/py/dlight-client)
 [![Python Versions](https://img.shields.io/pypi/pyversions/dlight-client.svg)](https://pypi.org/project/dlight-client/)
+[![CI](https://github.com/irishsmurf/dlight-client/actions/workflows/python-package.yml/badge.svg)](https://github.com/irishsmurf/dlight-client/actions/workflows/python-package.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-This Python package provides an asynchronous (`asyncio`) client library for discovering and controlling dLight smart lamps over a local Wi-Fi network. It allows you to find dLight devices using UDP broadcasts and control them using TCP commands.
+---
 
-## Table of Contents
-
-- [Features](#features)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Usage](#usage)
-  - [As a Library](#as-a-library)
-    - [1. Discovering Devices](#1-discovering-devices)
-    - [2. Controlling a Device](#2-controlling-a-device)
-    - [3. Performance Optimization](#3-performance-optimization)
-  - [Using the Command-Line Tool (CLI)](#using-the-command-line-tool-cli)
-- [API Overview](#api-overview)
-- [Architecture](#architecture)
-- [Development and Testing](#development-and-testing)
-
-## Features
-
-*   **Asynchronous:** Built with `asyncio` for efficient, non-blocking network operations.
-*   **Device Discovery:** Find dLight devices on your local network using UDP broadcast (`discover_devices`).
-*   **High-Level Device Control:** An easy-to-use `DLightDevice` class for object-oriented control of a specific lamp.
-*   **Performance Optimized:**
-    *   **Persistent TCP Connections:** Reuse connections for sequential commands to reduce latency (`persistent=True`).
-    *   **Connection Concurrency Safety:** Automatic per-device locking ensures multiple concurrent tasks can share a client safely.
-    *   **Idle Timeout:** Stale connections are automatically closed and refreshed after a period of inactivity (default 60s).
-    *   **State Caching & Optimistic Updates:** Internal cache in `DLightDevice` reduces redundant network queries and provides immediate feedback.
-*   **Automatic Retries:** Opt-in retries with exponential backoff (`max_retries`, `retry_backoff`) for transient network failures. Protocol errors are never retried.
-*   **Optional TLS:** Pass `ssl=True` or a custom `ssl.SSLContext` to encrypt the TCP channel (CLI: `--ssl`, `--insecure`).
-*   **Developer Friendly:**
-    *   **Structured Models:** Use `TypedDict` models (`DeviceState`, `DeviceInfo`, etc.) for better IDE support and type safety.
-*   **State Control:**
-    *   Turn On/Off
-    *   Set Brightness (0-100%)
-    *   Set Color Temperature (2600K-6000K)
-*   **Device Query:**
-    *   Get the current state (power, brightness, color).
-    *   Get device information (model, firmware version, etc.).
-*   **Wi-Fi Provisioning:** Send Wi-Fi credentials to a device in SoftAP mode for initial setup.
-*   **Robust Communication:** Handles the dLight TCP protocol (4-byte length prefix + JSON payload) and includes timeouts.
-*   **Custom Error Handling:** Specific exceptions for network and device errors (e.g., `DLightTimeoutError`, `DLightResponseError`).
-*   **Command-Line Tool:** A convenient CLI for quick discovery and interaction.
-
-## Prerequisites
-
-*   A dLight device connected to your local Wi-Fi network (or in SoftAP mode for initial setup).
-*   Python 3.9 through 3.13 (officially supported).
-
-## Installation
+## Install
 
 ```bash
 pip install dlight-client
 ```
 
-## Usage
+Python 3.9 – 3.13. No other packages required.
 
-You can use this package as a library in your Python projects or via the included command-line tool.
-
-### As a Library
-
-Using the library typically involves two steps: discovering devices to get their IP address and ID, and then creating a `DLightDevice` instance to interact with a specific lamp.
-
-#### 1. Discovering Devices
-
-First, use the `discover_devices` function to find lamps on your network.
+## Quick start
 
 ```python
 import asyncio
-from dlightclient import discover_devices
+from dlightclient import AsyncDLightClient, DLightDevice, discover_devices
 
-async def find_devices():
-    print("--- Discovering Devices ---")
-    devices = await discover_devices(discovery_duration=3.0)
+async def main():
+    devices = await discover_devices()        # UDP broadcast, 3 s window
+    info = devices[0]
 
-    for i, device_info in enumerate(devices):
-        ip = device_info.get('ip_address')
-        dev_id = device_info.get('deviceId')
-        print(f"  Device {i+1}: ID={dev_id}, IP={ip}")
+    async with AsyncDLightClient(persistent=True) as client:
+        lamp = DLightDevice(info["ip_address"], info["deviceId"], client)
+        await lamp.turn_on()
+        await lamp.set_brightness(75)
+        await lamp.set_color_temperature(3000) # warm white
 
-if __name__ == "__main__":
-    asyncio.run(find_devices())
+asyncio.run(main())
 ```
 
-#### 2. Controlling a Device
+## Features
 
-Once you have the `ip_address` and `deviceId`, you can use the high-level `DLightDevice` class for intuitive control.
+- **Device discovery** — UDP broadcast scan; finds all lamps on the local network
+- **Persistent connections** — connection pool with per-device locking and idle eviction
+- **State caching** — optimistic updates with automatic rollback on failure
+- **Automatic retries** — exponential backoff on transient errors (`max_retries`, `retry_backoff`)
+- **Optional TLS** — pass `ssl=True` or a custom `ssl.SSLContext`
+- **Typed models** — `TypedDict` classes for `DeviceState`, `DeviceInfo`, `CommandResult`
+- **CLI** — `python -m dlightclient.cli --discover` for quick exploration
+- **Wi-Fi provisioning** — send credentials to a lamp in SoftAP mode
 
-```python
-import asyncio
-from dlightclient import AsyncDLightClient, DLightDevice
-
-async def run_example():
-    # The client handles the underlying TCP communication
-    client = AsyncDLightClient()
-
-    # The device object is the high-level interface
-    device = DLightDevice(ip_address="192.168.1.123", device_id="DL12345", client=client)
-
-    # Simple control commands
-    await device.turn_on()
-    await device.set_brightness(75)
-    
-    # State caching: get_state() returns cached value by default
-    state = await device.get_state() 
-    print(f"Current Brightness (cached): {state.get('brightness')}%")
-
-if __name__ == "__main__":
-    asyncio.run(run_example())
-```
-
-#### 3. Performance Optimization
-
-For applications that need to send many commands in a row, use **Persistent Connections** to eliminate connection setup overhead.
-
-Persistence is enabled by the `persistent=True` constructor argument. The context
-manager does not enable it; it only guarantees that all pooled connections are
-closed on exit.
-
-**Option A: Context Manager (recommended)**
-```python
-from dlightclient import AsyncDLightClient, DLightDevice
-
-async with AsyncDLightClient(persistent=True) as client:
-    device = DLightDevice(ip_address="192.168.1.123", device_id="DL12345", client=client)
-    # Both commands reuse the same TCP connection
-    await device.turn_on()
-    await device.set_brightness(50)
-# All connections are closed when the block exits
-```
-
-**Option B: Manual Lifecycle**
-```python
-client = AsyncDLightClient(persistent=True)
-try:
-    ...  # perform operations
-finally:
-    await client.close()  # Explicitly close when finished
-```
-
-> **Changed in 1.6.0:** `async with AsyncDLightClient()` no longer implicitly
-> enables persistence; pass `persistent=True` explicitly.
-
-For lossy Wi-Fi environments, enable retries — they apply only to transient
-network errors (timeouts, connection failures), never to protocol errors:
-
-```python
-client = AsyncDLightClient(max_retries=2, retry_backoff=0.5)  # waits 0.5s, then 1.0s
-```
-
-### Using the Command-Line Tool (CLI)
-
-The package includes a basic CLI for common operations.
+## CLI
 
 ```bash
-# Discover all devices on the network
+# Discover all lamps
 python -m dlightclient.cli --discover
 
-# Interact with a specific device using a test sequence
-python -m dlightclient.cli --ip 192.168.1.100 --id DL12345
+# Interact with a specific lamp
+python -m dlightclient.cli --ip 192.168.1.123 --id DL12345
+
+# Debug with verbose output
+python -m dlightclient.cli --ip 192.168.1.123 --id DL12345 -vv
 ```
 
-## API Overview
+## Documentation
 
-*   `dlightclient.discovery.discover_devices`: Uses UDP broadcast to find devices on the network.
-*   `dlightclient.client.AsyncDLightClient`: The low-level TCP client. Supports `persistent=True`.
-*   `dlightclient.device.DLightDevice`: High-level class. Includes state caching automatically.
-*   `dlightclient.exceptions`: Custom exceptions hierarchy rooted in `DLightError`.
+Full documentation at **https://irishsmurf.github.io/dlight-client/**
 
-## Architecture
+| | |
+|---|---|
+| [Getting Started](https://irishsmurf.github.io/dlight-client/getting-started/) | Install, discover, first commands |
+| [User Guide](https://irishsmurf.github.io/dlight-client/user-guide/discovery/) | Discovery, control, connections, error handling |
+| [API Reference](https://irishsmurf.github.io/dlight-client/api/) | Full class and method reference |
+| [Architecture](https://irishsmurf.github.io/dlight-client/architecture/) | Internals for contributors |
+| [Contributing](CONTRIBUTING.md) | Dev setup, testing, PR conventions |
+| [Changelog](CHANGELOG.md) | What's changed in each release |
 
-For a deep dive into the library's layering, data flow, concurrency model, and
-wire protocol — aimed at contributors — see
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+## Upgrade cadence
 
-## Development and Testing
+Patch releases (`1.x.Y`) are made as needed for bug fixes and security patches.
+Minor releases (`1.X.0`) ship new features and are backwards compatible.
+Major releases (`X.0.0`) may include breaking changes and are announced in advance via GitHub Issues.
 
-1.  **Set up a virtual environment:**
-    ```bash
-    python -m venv .venv
-    source .venv/bin/activate
-    ```
+## License
 
-2.  **Install in editable mode:**
-    ```bash
-    pip install -e .
-    ```
-
-3.  **Run tests:**
-    ```bash
-    python -m unittest discover tests/
-    ```
+MIT — see [LICENSE](LICENSE).

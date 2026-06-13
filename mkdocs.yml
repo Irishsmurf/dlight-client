@@ -1,0 +1,112 @@
+site_name: dLight-client
+site_description: Async Python library for discovering and controlling dLight smart lamps over local Wi-Fi.
+site_author: David Kernan
+site_url: https://irishsmurf.github.io/dlight-client/
+
+repo_name: irishsmurf/dlight-client
+repo_url: https://github.com/irishsmurf/dlight-client
+edit_uri: edit/main/docs/
+
+copyright: >
+  MIT License &nbsp;·&nbsp;
+  dLight is a trademark of its respective owner;
+  dlight-client is an unofficial community library.
+
+theme:
+  name: material
+  logo: assets/brand/header_icon.svg
+  favicon: assets/brand/icon.svg
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+
+extra_css:
+  - stylesheets/brand.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/irishsmurf/dlight-client
+      name: dlight-client on GitHub
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/dlight-client/
+      name: dlight-client on PyPI
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - def_list
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - User Guide:
+      - Discovering Devices: user-guide/discovery.md
+      - Controlling Devices: user-guide/device-control.md
+      - Connection Management: user-guide/connections.md
+      - Error Handling: user-guide/error-handling.md
+      - CLI Reference: user-guide/cli.md
+  - API Reference:
+      - Overview: api/index.md
+      - AsyncDLightClient: api/client.md
+      - DLightDevice: api/device.md
+      - discover_devices: api/discovery.md
+      - Exceptions: api/exceptions.md
+      - Models: api/models.md
+  - Architecture: architecture.md
+  - Contributing: contributing.md
+  - Changelog: changelog.md
+  - Roadmap: roadmap.md

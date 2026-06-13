@@ -1,22 +1,21 @@
-# pyproject.toml
-
 [build-system]
-# Specifies that setuptools is needed to build the package
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# Core metadata about your project
-name = "dlight-client" # Distribution name (for pip install)
-dynamic = ["version"] # Version is sourced from dlightclient.__version__
+name = "dlight-client"
+dynamic = ["version"]
 authors = [
   { name="David Kernan", email="dave@paddez.com" },
 ]
-description = "A Python client for the dLight smart lamp API."
-readme = "README.md" # Path to your README file
+description = "Async Python library for discovering and controlling dLight smart lamps over local Wi-Fi."
+readme = "README.md"
 license = "MIT"
-requires-python = ">=3.9" # Minimum Python version supported
+requires-python = ">=3.9"
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: AsyncIO",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
@@ -27,8 +26,30 @@ classifiers = [
     "Intended Audience :: Developers",
     "Topic :: Home Automation",
     "Topic :: System :: Networking",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-keywords = ["dlight", "smart home", "lighting", "api", "iot"]
+keywords = ["dlight", "smart home", "lighting", "asyncio", "iot", "local-api"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "flake8>=7.0",
+    "ruff>=0.5",
+]
+docs = [
+    "mkdocs-material>=9.5,<10",
+    "pymdown-extensions>=10.7",
+]
+
+[project.scripts]
+dlight = "dlightclient.cli:main_sync"
+
+[project.urls]
+"Homepage"      = "https://github.com/irishsmurf/dlight-client"
+"Documentation" = "https://irishsmurf.github.io/dlight-client/"
+"Changelog"     = "https://github.com/irishsmurf/dlight-client/blob/main/CHANGELOG.md"
+"Bug Tracker"   = "https://github.com/irishsmurf/dlight-client/issues"
 
 [tool.setuptools.dynamic]
 version = {attr = "dlightclient.__version__"}
@@ -37,6 +58,9 @@ version = {attr = "dlightclient.__version__"}
 include = ["dlightclient*"]
 exclude = ["tests*", "issues*", "docs*"]
 
-[project.urls]
-"Homepage" = "https://github.com/irishsmurf/dlight-client" # Example URL
-"Bug Tracker" = "https://github.com/irishsmurf/dlight-client/issues" # Example URL
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 120
+select = ["E", "F", "I"]

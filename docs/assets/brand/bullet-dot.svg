@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="bullet">
+  <defs>
+    <radialGradient id="dot" cx="0.4" cy="0.4" r="0.6">
+      <stop offset="0" stop-color="#FFD43B"/>
+      <stop offset="1" stop-color="#3776AB"/>
+    </radialGradient>
+  </defs>
+  <!-- gradient dot: Python Yellow core, Python Blue rim -->
+  <circle cx="8" cy="8" r="5" fill="url(#dot)"/>
+</svg>

@@ -271,8 +271,13 @@ async def main():
         log.info("Run with -h or --help for usage details.")
 
 
-if __name__ == "__main__":
+def main_sync() -> None:
+    """Entry point for the `dlight` console script."""
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\nOperation cancelled by user.")
+
+
+if __name__ == "__main__":
+    main_sync()
