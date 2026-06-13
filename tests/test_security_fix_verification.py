@@ -1,9 +1,10 @@
-import unittest
 import asyncio
 import json
 import struct
-from unittest.mock import patch, AsyncMock, MagicMock
-from dlightclient import AsyncDLightClient, DLightCommandError, STATUS_SUCCESS
+import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from dlightclient import STATUS_SUCCESS, AsyncDLightClient, DLightCommandError
 
 
 class TestSecurityFixes(unittest.IsolatedAsyncioTestCase):

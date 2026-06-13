@@ -7,11 +7,11 @@ import struct
 import unittest
 
 from dlightclient import (
+    MAX_PAYLOAD_SIZE,
+    STATUS_SUCCESS,
     DLightCommandError,
     DLightResponseError,
     DLightTimeoutError,
-    MAX_PAYLOAD_SIZE,
-    STATUS_SUCCESS,
 )
 from dlightclient._frame import encode_command, mask_command, read_response
 

@@ -3,30 +3,31 @@
 
 import asyncio
 import json
+import logging
 import secrets
 import ssl
 import time
-import logging
-from typing import Dict, Any, Optional, Union
+from typing import Any, Dict, Optional, Union
+
+from ._frame import encode_command, mask_command, read_response
+from ._pool import ConnectionPool
 
 # Import constants and exceptions from within the package
 from .constants import (
+    COMMAND_TYPE_EXECUTE,
+    COMMAND_TYPE_QUERY_DEVICE_INFO,
+    COMMAND_TYPE_QUERY_DEVICE_STATES,
+    COMMAND_TYPE_SSID_CONNECT,
     DEFAULT_TCP_PORT,
     DEFAULT_TIMEOUT,
     FACTORY_RESET_IP,
-    COMMAND_TYPE_EXECUTE,
-    COMMAND_TYPE_QUERY_DEVICE_STATES,
-    COMMAND_TYPE_QUERY_DEVICE_INFO,
-    COMMAND_TYPE_SSID_CONNECT,
 )
 from .exceptions import (
-    DLightError,
-    DLightConnectionError,
-    DLightTimeoutError,
     DLightCommandError,
+    DLightConnectionError,
+    DLightError,
+    DLightTimeoutError,
 )
-from ._frame import encode_command, mask_command, read_response
-from ._pool import ConnectionPool
 from .models import CommandResult
 
 # Logger specific to the client, inheriting from the base logger if needed

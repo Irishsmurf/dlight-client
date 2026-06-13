@@ -1,24 +1,23 @@
-import unittest
 import logging
 import sys
-from unittest.mock import patch, AsyncMock, MagicMock, call
+import unittest
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 # --- Import components needed for testing ---
 try:
     # Import the main function from the cli module
-    from dlightclient import cli
-
     # Import classes/functions/exceptions that cli.py uses, for mocking specs/assertions
     from dlightclient import (
         AsyncDLightClient,
-        DLightDevice,
-        discover_devices,
-        DLightError,
-        DLightTimeoutError,
-        DLightConnectionError,
-        DLightResponseError,
         DLightCommandError,
+        DLightConnectionError,
+        DLightDevice,
+        DLightError,
+        DLightResponseError,
+        DLightTimeoutError,
+        cli,
         constants,  # Import the constants module
+        discover_devices,
     )
 
     _IMPORT_SUCCESS = True

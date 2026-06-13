@@ -2,17 +2,17 @@
 """Handles UDP discovery of dLight devices."""
 
 import asyncio
-import socket
-import json
 import binascii
+import json
 import logging
-from typing import List, Dict, Any, Optional, Tuple, Set
+import socket
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .constants import (
+    BROADCAST_ADDRESS,
     DEFAULT_UDP_DISCOVERY_PORT,
     DEFAULT_UDP_RESPONSE_PORT,
     UDP_DISCOVERY_PAYLOAD_HEX,
-    BROADCAST_ADDRESS,
 )
 
 # Logger specific to discovery, inheriting from the base logger if needed
