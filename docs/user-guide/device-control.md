@@ -32,12 +32,37 @@ All methods are `async` and return a `CommandResult` dict on success.
 | `toggle()` | — | Toggles power on/off; uses the state cache to avoid an extra network call. |
 | `set_brightness(brightness)` | `int` 0–100 | Sets brightness as a percentage. |
 | `set_color_temperature(temperature)` | `int` 2600–6000 | Sets colour temperature in Kelvin. |
+| `apply_scene(scene)` | `LightScene` or `brightness` + `temperature` kwargs | Applies a preset in one call. |
 
 ```python
 await lamp.turn_on()
 await lamp.set_brightness(80)
 await lamp.set_color_temperature(2700)  # warm, candle-like
 await lamp.toggle()                     # off → on, or on → off
+```
+
+### Scenes
+
+`apply_scene()` sets brightness and colour temperature together in one call, updating the state cache atomically:
+
+```python
+from dlightclient import LightScene
+
+await lamp.apply_scene(LightScene.READING)   # 70%, 4000 K — comfortable reading light
+await lamp.apply_scene(LightScene.EVENING)   # 30%, 2700 K — warm, relaxed ambience
+await lamp.apply_scene(LightScene.DAYLIGHT)  # 100%, 6000 K — crisp daylight simulation
+await lamp.apply_scene(LightScene.FOCUS)     # 100%, 5000 K — bright, neutral work light
+```
+
+You can also define a custom scene inline or save it for reuse:
+
+```python
+# Inline
+await lamp.apply_scene(brightness=50, temperature=3500)
+
+# Saved preset
+MOVIE_NIGHT = LightScene(brightness=20, temperature=2700)
+await lamp.apply_scene(MOVIE_NIGHT)
 ```
 
 ### Colour temperature range

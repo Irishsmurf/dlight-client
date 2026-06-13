@@ -120,6 +120,37 @@ Returns `True` if the device is reachable, `False` if it timed out or the connec
 |---|---|---|
 | `timeout` | `2.0` | Seconds to wait for a response. Overrides the client's default timeout for this call only. |
 
+### `apply_scene`
+
+```python
+async def apply_scene(
+    scene: LightScene | None = None,
+    *,
+    brightness: int | None = None,
+    temperature: int | None = None,
+) -> tuple[CommandResult, CommandResult]
+```
+
+Applies a brightness + colour temperature preset in one call. Both fields are updated in the state cache atomically before any network call and rolled back together if either command fails.
+
+Accepts either a [`LightScene`](models.md#lightscene) object or explicit keyword args:
+
+```python
+await lamp.apply_scene(LightScene.READING)
+await lamp.apply_scene(brightness=90, temperature=5000)
+await lamp.apply_scene(LightScene(brightness=50, temperature=3500))
+```
+
+| Parameter | Default | Description |
+|---|---|---|
+| `scene` | `None` | A `LightScene` preset. When provided, `brightness` and `temperature` kwargs are ignored. |
+| `brightness` | — | Brightness percentage (0–100). Required when `scene` is not given. |
+| `temperature` | — | Colour temperature in Kelvin (2600–6000). Required when `scene` is not given. |
+
+Returns a `(brightness_result, temperature_result)` tuple of `CommandResult` dicts.
+
+**Raises:** `ValueError` if `scene` is `None` and either `brightness` or `temperature` is not provided.
+
 ### `flash`
 
 ```python
