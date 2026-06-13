@@ -1301,7 +1301,7 @@
 <p>The pool provides these guarantees:</p>
 <ul>
 <li><strong>Per-device locking.</strong> Each <code>(host, port, ssl)</code> key has its own <code>asyncio.Lock</code>. Concurrent tasks sharing a client will queue up per device, not per client — so two lamps can be commanded in parallel while requests to the same lamp serialise.</li>
-<li><strong>Eviction on failure.</strong> Any exception during a send or receive evicts the connection immediately. The next command for that device gets a fresh connection.</li>
+<li><strong>Eviction on failure.</strong> Any exception during a send or receive evicts the connection immediately. If the connection was a reused persistent connection that went stale, the pool automatically discards it, opens a fresh connection, and transparently retries the failed command once. If the retry also fails or the connection was already brand new, the error is raised to the caller.</li>
 <li><strong>Idle eviction.</strong> Connections unused for longer than <code>idle_timeout</code> (default 60 s) are closed and removed from the pool.</li>
 </ul>
 <h2 id="the-context-manager">The context manager<a class="headerlink" href="#the-context-manager" title="Permanent link">&para;</a></h2>

@@ -1427,6 +1427,7 @@
 <li><strong>Two connection modes.</strong> <code>persistent=False</code> (default): dial → exchange → close, per command. <code>persistent=True</code>: connections are pooled under <code>(host, port, ssl)</code> and reused until <code>idle_timeout</code> elapses or the peer closes them.</li>
 <li><strong>Retry policy lives in one loop.</strong> Only <code>DLightTimeoutError</code> and <code>DLightConnectionError</code> are retryable. Protocol-level failures (<code>DLightResponseError</code>, non-SUCCESS status) are never retried.</li>
 <li><strong>Eviction is unconditional on failure.</strong> The pool's context manager closes and discards a connection if the exchange body raises any exception. A stream that failed mid-exchange may have a late response still in flight; reusing it would desynchronise every subsequent request/response pair. The cost (an occasional unnecessary reconnect) is accepted in exchange for making desync structurally impossible.</li>
+<li><strong>Transparent reconnection on stale connections.</strong> If a connection error occurs on a reused (not freshly opened) persistent connection, the pool transparently discards it, establishes a new connection, and retries the failed operation once. Only if the retry also fails does the error propagate to the caller. Failure on a brand-new connection is never retried.</li>
 </ul>
 <hr />
 <h2 id="key-design-decisions">Key design decisions<a class="headerlink" href="#key-design-decisions" title="Permanent link">&para;</a></h2>
