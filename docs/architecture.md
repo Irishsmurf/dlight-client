@@ -74,6 +74,7 @@ A call like `device.set_brightness(40)` flows through five stages:
 - **Two connection modes.** `persistent=False` (default): dial → exchange → close, per command. `persistent=True`: connections are pooled under `(host, port, ssl)` and reused until `idle_timeout` elapses or the peer closes them.
 - **Retry policy lives in one loop.** Only `DLightTimeoutError` and `DLightConnectionError` are retryable. Protocol-level failures (`DLightResponseError`, non-SUCCESS status) are never retried.
 - **Eviction is unconditional on failure.** The pool's context manager closes and discards a connection if the exchange body raises any exception. A stream that failed mid-exchange may have a late response still in flight; reusing it would desynchronise every subsequent request/response pair. The cost (an occasional unnecessary reconnect) is accepted in exchange for making desync structurally impossible.
+- **Transparent reconnection on stale connections.** If a connection error occurs on a reused (not freshly opened) persistent connection, the pool transparently discards it, establishes a new connection, and retries the failed operation once. Only if the retry also fails does the error propagate to the caller. Failure on a brand-new connection is never retried.
 
 ---
 

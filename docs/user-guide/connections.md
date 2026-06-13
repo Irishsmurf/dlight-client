@@ -19,7 +19,7 @@ client = AsyncDLightClient(persistent=True)   # connections stay open
 The pool provides these guarantees:
 
 - **Per-device locking.** Each `(host, port, ssl)` key has its own `asyncio.Lock`. Concurrent tasks sharing a client will queue up per device, not per client — so two lamps can be commanded in parallel while requests to the same lamp serialise.
-- **Eviction on failure.** Any exception during a send or receive evicts the connection immediately. The next command for that device gets a fresh connection.
+- **Eviction on failure.** Any exception during a send or receive evicts the connection immediately. If the connection was a reused persistent connection that went stale, the pool automatically discards it, opens a fresh connection, and transparently retries the failed command once. If the retry also fails or the connection was already brand new, the error is raised to the caller.
 - **Idle eviction.** Connections unused for longer than `idle_timeout` (default 60 s) are closed and removed from the pool.
 
 ## The context manager

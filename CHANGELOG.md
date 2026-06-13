@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Transparent automatic reconnection in `ConnectionPool` for stale persistent connections, retrying the failed command once on a new connection before raising an error.
 - `discover_devices_stream()` — async generator variant of device discovery that yields discovered devices incrementally as they respond, instead of waiting for the full timeout window.
 - PEP 561 compliance: added `py.typed` marker file to support inline type checking for library users, and verified type completeness.
 - Fully-featured MkDocs documentation site with brand assets, API references, architecture documents, and contributor guides.
