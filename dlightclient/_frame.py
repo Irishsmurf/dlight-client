@@ -42,9 +42,7 @@ def encode_command(command: Dict[str, Any]) -> bytes:
     try:
         return json.dumps(command).encode("utf-8")
     except TypeError as e:
-        raise DLightCommandError(
-            f"Failed to serialize command to JSON: {e}\nCommand: {mask_command(command)}"
-        ) from e
+        raise DLightCommandError(f"Failed to serialize command to JSON: {e}\nCommand: {mask_command(command)}") from e
 
 
 async def read_response(

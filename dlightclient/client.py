@@ -156,8 +156,9 @@ class AsyncDLightClient:
 
         operation = f"command {command.get('commandType', 'UNKNOWN')} to {target_ip}:{port}"
         json_data = encode_command(command)
-        _LOGGER.debug(f"Prepared {operation} ({len(json_data)} bytes, SSL: {bool(ssl)}): "
-                      f"{json.dumps(mask_command(command))!r}")
+        _LOGGER.debug(
+            f"Prepared {operation} ({len(json_data)} bytes, SSL: {bool(ssl)}): {json.dumps(mask_command(command))!r}"
+        )
 
         for attempt in range(self.max_retries + 1):
             try:
