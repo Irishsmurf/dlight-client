@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `DLightDevice.ping(timeout=2.0)` — lightweight connectivity health check; returns `True` if the
+  device responds to a `QUERY_DEVICE_INFO` probe, `False` on timeout or connection refused. Never
+  raises. Accepts a `timeout` parameter that overrides the client default for that call only.
 - `DLightDevice.toggle()` — convenience method that toggles the lamp on/off using the cached
   state to avoid an extra network round-trip; falls back to `get_state()` if the cache is empty.
 - `DLightDevice.on_state_change(cb)` and `remove_state_listener(cb)` — register sync or async

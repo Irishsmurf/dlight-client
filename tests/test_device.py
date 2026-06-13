@@ -11,6 +11,7 @@ try:
         AsyncDLightClient,
         DLightDevice,
         DLightError,
+        DLightConnectionError,
         DLightTimeoutError,
         DLightResponseError,
         # Import constants if needed for expected values
@@ -35,6 +36,9 @@ except ImportError as e:
     CLIENT_MODULE_PATH = "dlightclient.client"
 
     class DLightError(Exception):
+        pass
+
+    class DLightConnectionError(DLightError):
         pass
 
     class DLightTimeoutError(DLightError):
@@ -639,6 +643,54 @@ class TestDLightDeviceStateListeners(unittest.IsolatedAsyncioTestCase):
         self.device.on_state_change(lambda d, o, n: results.append("b"))
         await self.device.turn_on()
         self.assertEqual(sorted(results), ["a", "b"])
+
+
+@unittest.skipIf(not _IMPORT_SUCCESS, "Skipping ping tests due to import failure.")
+class TestDLightDevicePing(unittest.IsolatedAsyncioTestCase):
+    """Tests for DLightDevice.ping()."""
+
+    def setUp(self):
+        self.test_ip = "192.168.1.55"
+        self.test_id = "test-device-id-123"
+        self.mock_client = AsyncMock(spec=AsyncDLightClient)
+        self.device = DLightDevice(self.test_ip, self.test_id, self.mock_client)
+
+    async def test_ping_returns_true_when_reachable(self):
+        self.mock_client.query_device_info.return_value = {"status": STATUS_SUCCESS}
+        result = await self.device.ping()
+        self.assertTrue(result)
+        self.mock_client.query_device_info.assert_awaited_once_with(
+            self.test_ip, self.test_id, timeout=2.0
+        )
+
+    async def test_ping_returns_false_on_timeout(self):
+        self.mock_client.query_device_info.side_effect = DLightTimeoutError("timed out")
+        result = await self.device.ping()
+        self.assertFalse(result)
+
+    async def test_ping_returns_false_on_connection_error(self):
+        self.mock_client.query_device_info.side_effect = DLightConnectionError("refused")
+        result = await self.device.ping()
+        self.assertFalse(result)
+
+    async def test_ping_custom_timeout_is_forwarded(self):
+        self.mock_client.query_device_info.return_value = {"status": STATUS_SUCCESS}
+        await self.device.ping(timeout=0.5)
+        self.mock_client.query_device_info.assert_awaited_once_with(
+            self.test_ip, self.test_id, timeout=0.5
+        )
+
+    async def test_ping_does_not_update_state_cache(self):
+        self.mock_client.query_device_info.return_value = {"status": STATUS_SUCCESS}
+        await self.device.ping()
+        self.assertEqual(self.device._state, {})
+
+    async def test_ping_does_not_fire_state_listeners(self):
+        self.mock_client.query_device_info.return_value = {"status": STATUS_SUCCESS}
+        events = []
+        self.device.on_state_change(lambda d, o, n: events.append(n))
+        await self.device.ping()
+        self.assertEqual(events, [])
 
 
 if __name__ == "__main__":

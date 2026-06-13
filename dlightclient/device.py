@@ -216,6 +216,24 @@ class DLightDevice:
         # Casting to DeviceInfo for type safety
         return DeviceInfo(**info)  # type: ignore
 
+    async def ping(self, timeout: float = 2.0) -> bool:
+        """Checks whether the device is reachable.
+
+        Args:
+            timeout: Seconds to wait for a response. Overrides the client's
+                default timeout for this call only.
+
+        Returns:
+            True if the device responded, False if it timed out or the
+            connection was refused. Never raises.
+        """
+        _LOGGER.debug(f"Device {self.id}: Pinging (timeout={timeout}s)")
+        try:
+            await self._client.query_device_info(self.ip, self.id, timeout=timeout)
+            return True
+        except DLightError:
+            return False
+
     async def flash(
         self,
         flashes: int = 3,
