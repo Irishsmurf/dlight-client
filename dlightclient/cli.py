@@ -198,12 +198,8 @@ async def main() -> None:
         action="store_true",
         help="Automatically interact with the first discovered device (use with --discover).",
     )
-    parser.add_argument(
-        "--ssl", action="store_true", help="Enable SSL/TLS for TCP commands."
-    )
-    parser.add_argument(
-        "--insecure", action="store_true", help="Allow unverified SSL certificates (use with --ssl)."
-    )
+    parser.add_argument("--ssl", action="store_true", help="Enable SSL/TLS for TCP commands.")
+    parser.add_argument("--insecure", action="store_true", help="Allow unverified SSL certificates (use with --ssl).")
     parser.add_argument(
         "-v", "--verbose", action="count", default=0, help="Increase logging verbosity (-v for INFO, -vv for DEBUG)."
     )

@@ -81,11 +81,7 @@ class TestSecurityFixes(unittest.IsolatedAsyncioTestCase):
 
         mock_json_dumps.side_effect = side_effect
 
-        command = {
-            "commandType": "SSID_CONNECT",
-            "ssid": self.ssid,
-            "password": self.password
-        }
+        command = {"commandType": "SSID_CONNECT", "ssid": self.ssid, "password": self.password}
 
         with self.assertRaises(DLightCommandError) as cm:
             await self.client._async_send_tcp_command(self.target_ip, command)

@@ -295,9 +295,7 @@ async def main() -> None:
     device = FakeDLight(args.device_id, args.model, args.sw_version, args.hw_version)
     failures = FailureModes()
 
-    server = await asyncio.start_server(
-        lambda r, w: _handle_tcp(device, failures, r, w), args.host, args.tcp_port
-    )
+    server = await asyncio.start_server(lambda r, w: _handle_tcp(device, failures, r, w), args.host, args.tcp_port)
     _LOGGER.info("Fake dLight %r (TCP) listening on %s:%d", device.device_id, args.host, args.tcp_port)
 
     control_server = None
@@ -314,9 +312,7 @@ async def main() -> None:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.bind((args.host, DISCOVERY_PORT))
-        transport, _ = await loop.create_datagram_endpoint(
-            lambda: _DiscoveryResponder(device), sock=sock
-        )
+        transport, _ = await loop.create_datagram_endpoint(lambda: _DiscoveryResponder(device), sock=sock)
         _LOGGER.info("Discovery responder (UDP) listening on %s:%d", args.host, DISCOVERY_PORT)
 
     try:

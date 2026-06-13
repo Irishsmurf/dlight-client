@@ -272,13 +272,9 @@ class DLightDevice:
             temperature = scene.temperature
         else:
             if brightness is None or temperature is None:
-                raise ValueError(
-                    "Provide a LightScene object or both brightness and temperature keyword args"
-                )
+                raise ValueError("Provide a LightScene object or both brightness and temperature keyword args")
 
-        _LOGGER.info(
-            f"Device {self.id}: Applying scene (brightness={brightness}%, temperature={temperature}K)"
-        )
+        _LOGGER.info(f"Device {self.id}: Applying scene (brightness={brightness}%, temperature={temperature}K)")
 
         _old = self._clone_state(self._state)
 

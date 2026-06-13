@@ -534,6 +534,7 @@ class TestDLightDeviceStateListeners(unittest.IsolatedAsyncioTestCase):
     def test_duplicate_registration_ignored(self):
         def cb(d, o, n):
             pass
+
         self.device.on_state_change(cb)
         self.device.on_state_change(cb)
         self.assertEqual(len(self.device._state_listeners), 1)
@@ -662,10 +663,10 @@ class TestDLightDeviceApplyScene(unittest.IsolatedAsyncioTestCase):
         self.mock_client.set_color_temperature.return_value = {"status": STATUS_SUCCESS}
 
     def test_builtin_scenes_have_correct_values(self):
-        self.assertEqual(LightScene.READING,  LightScene(brightness=70, temperature=4000))
-        self.assertEqual(LightScene.EVENING,  LightScene(brightness=30, temperature=2700))
+        self.assertEqual(LightScene.READING, LightScene(brightness=70, temperature=4000))
+        self.assertEqual(LightScene.EVENING, LightScene(brightness=30, temperature=2700))
         self.assertEqual(LightScene.DAYLIGHT, LightScene(brightness=100, temperature=6000))
-        self.assertEqual(LightScene.FOCUS,    LightScene(brightness=100, temperature=5000))
+        self.assertEqual(LightScene.FOCUS, LightScene(brightness=100, temperature=5000))
 
     async def test_apply_scene_with_scene_object(self):
         result = await self.device.apply_scene(LightScene.READING)
@@ -736,9 +737,7 @@ class TestDLightDevicePing(unittest.IsolatedAsyncioTestCase):
         self.mock_client.query_device_info.return_value = {"status": STATUS_SUCCESS}
         result = await self.device.ping()
         self.assertTrue(result)
-        self.mock_client.query_device_info.assert_awaited_once_with(
-            self.test_ip, self.test_id, timeout=2.0
-        )
+        self.mock_client.query_device_info.assert_awaited_once_with(self.test_ip, self.test_id, timeout=2.0)
 
     async def test_ping_returns_false_on_timeout(self):
         self.mock_client.query_device_info.side_effect = DLightTimeoutError("timed out")
@@ -753,9 +752,7 @@ class TestDLightDevicePing(unittest.IsolatedAsyncioTestCase):
     async def test_ping_custom_timeout_is_forwarded(self):
         self.mock_client.query_device_info.return_value = {"status": STATUS_SUCCESS}
         await self.device.ping(timeout=0.5)
-        self.mock_client.query_device_info.assert_awaited_once_with(
-            self.test_ip, self.test_id, timeout=0.5
-        )
+        self.mock_client.query_device_info.assert_awaited_once_with(self.test_ip, self.test_id, timeout=0.5)
 
     async def test_ping_does_not_update_state_cache(self):
         self.mock_client.query_device_info.return_value = {"status": STATUS_SUCCESS}

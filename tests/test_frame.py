@@ -76,7 +76,7 @@ class TestReadResponse(unittest.IsolatedAsyncioTestCase):
             await read_response(reader, 1.0, "test")
 
     async def test_invalid_utf8_rejected(self):
-        bad = b'\xff\xfe\xfd'
+        bad = b"\xff\xfe\xfd"
         reader = self._reader_with(struct.pack(">I", len(bad)) + bad)
         with self.assertRaisesRegex(DLightResponseError, "Failed to decode"):
             await read_response(reader, 1.0, "test")

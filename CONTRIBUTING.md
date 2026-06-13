@@ -9,7 +9,8 @@ git clone https://github.com/irishsmurf/dlight-client.git
 cd dlight-client
 python -m venv .venv && source .venv/bin/activate
 pip install -e .
-pip install pytest pytest-asyncio flake8 ruff
+pip install pytest pytest-asyncio flake8 ruff pre-commit
+pre-commit install
 python -m pytest tests/
 ```
 
@@ -53,6 +54,15 @@ ruff check dlightclient/
 - 120-character line limit
 - Type hints on all public methods
 - Comments only when the *why* is non-obvious
+
+### Pre-commit Hooks
+
+To ensure consistent formatting and linting, please set up the pre-commit hooks:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
 
 ## Commit conventions
 
