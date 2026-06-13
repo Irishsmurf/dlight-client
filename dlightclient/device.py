@@ -44,6 +44,7 @@ class DLightDevice:
         self._client = client
         self._state: DeviceState = {}
         self._state_listeners: list[Callable] = []
+        self._background_tasks: set[asyncio.Task] = set()
         _LOGGER.debug(f"DLightDevice initialized: ID='{self._id}', IP='{self._ip}'")
 
     @property
@@ -375,6 +376,8 @@ class DLightDevice:
                 res = cb(self, old, new)
                 if asyncio.iscoroutine(res):
                     task = asyncio.ensure_future(res)
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
                     task.add_done_callback(self._handle_listener_task_error)
             except Exception:
                 _LOGGER.exception("Device %s: error in state listener %r", self.id, cb)
