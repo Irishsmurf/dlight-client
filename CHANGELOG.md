@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-06-13
+
 ### Added
 - Transparent automatic reconnection in `ConnectionPool` for stale persistent connections, retrying the failed command once on a new connection before raising an error.
 - `discover_devices_stream()` — async generator variant of device discovery that yields discovered devices incrementally as they respond, instead of waiting for the full timeout window.
@@ -117,7 +119,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release: `AsyncDLightClient`, `discover_devices`, UDP broadcast discovery, TCP command protocol (4-byte length prefix + JSON).
 - PyPI packaging and GitHub Actions CI/CD (test matrix, trusted publishing to PyPI).
 
-[Unreleased]: https://github.com/irishsmurf/dlight-client/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/irishsmurf/dlight-client/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/irishsmurf/dlight-client/compare/v1.6.1...v2.0.0
 [1.6.1]: https://github.com/irishsmurf/dlight-client/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/irishsmurf/dlight-client/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/irishsmurf/dlight-client/compare/v1.5.0...v1.5.1
