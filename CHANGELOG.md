@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `discover_devices_stream()` — async generator variant of device discovery that yields discovered devices incrementally as they respond, instead of waiting for the full timeout window.
+- PEP 561 compliance: added `py.typed` marker file to support inline type checking for library users, and verified type completeness.
+- Fully-featured MkDocs documentation site with brand assets, API references, architecture documents, and contributor guides.
+- Added pre-commit hooks configuration.
+- Added automated CI code coverage reporting with an enforced 80% coverage threshold.
 - `LightScene` — immutable dataclass holding a `brightness` + `temperature` preset. Four built-in
   scenes provided: `LightScene.READING` (70%, 4000 K), `LightScene.EVENING` (30%, 2700 K),
   `LightScene.DAYLIGHT` (100%, 6000 K), `LightScene.FOCUS` (100%, 5000 K).
@@ -22,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DLightDevice.on_state_change(cb)` and `remove_state_listener(cb)` — register sync or async
   callbacks that fire whenever device state settles to a new value. Callbacks receive
   `(device, old_state, new_state)`; async callables are scheduled without blocking the caller.
+
+### Changed
+- Replaced Flake8 with Ruff for linting and code formatting.
+- Configured automated MkDocs deployment to GitHub Pages.
 
 ### Fixed
 - `turn_on()` and `turn_off()` rollback now correctly removes the `"on"` key when it was absent

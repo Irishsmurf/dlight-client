@@ -6,7 +6,7 @@ import binascii
 import json
 import logging
 import socket
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, AsyncIterator, Dict, List, Optional, Set, Tuple
 
 from .constants import (
     BROADCAST_ADDRESS,
@@ -22,21 +22,28 @@ _LOGGER = logging.getLogger(__name__)
 class _DiscoveryProtocol(asyncio.DatagramProtocol):
     """An asyncio datagram protocol for handling dLight discovery responses.
 
-    This protocol is used internally by `discover_devices`. It processes incoming
-    UDP datagrams, decodes them as JSON, and adds information about discovered
-    devices to a shared list, ensuring no duplicates are added.
+    This protocol is used internally by `discover_devices` and `discover_devices_stream`.
+    It processes incoming UDP datagrams, decodes them as JSON, and adds information about
+    discovered devices to a shared list and queue, ensuring no duplicates are added.
 
     Args:
         discovered_devices_set: A set to store the IP addresses of devices
             that have already been discovered, used for deduplication.
         results_list: A list to append the information of newly discovered
             devices to.
+        queue: An optional asyncio.Queue to push newly discovered devices to.
     """
 
-    def __init__(self, discovered_devices_set: Set[str], results_list: List[Dict[str, Any]]):
+    def __init__(
+        self,
+        discovered_devices_set: Set[str],
+        results_list: Optional[List[Dict[str, Any]]] = None,
+        queue: Optional[asyncio.Queue[Dict[str, Any]]] = None,
+    ):
         self.transport: Optional[asyncio.DatagramTransport] = None
         self.discovered_devices_set = discovered_devices_set
         self.results_list = results_list
+        self.queue = queue
         super().__init__()
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
@@ -62,7 +69,10 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
 
             # Add to results if successfully parsed
             self.discovered_devices_set.add(ip_address)
-            self.results_list.append(device_info)
+            if self.results_list is not None:
+                self.results_list.append(device_info)
+            if self.queue is not None:
+                self.queue.put_nowait(device_info)
 
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             _LOGGER.warning("Error decoding discovery response from %s: %s. Raw data: %r", ip_address, e, data)
@@ -195,3 +205,124 @@ async def discover_devices(
                 _LOGGER.debug(f"Error closing listen transport: {e_close}")
 
     return results_list
+
+
+async def discover_devices_stream(
+    timeout: float = 3.0,
+    response_port: int = DEFAULT_UDP_RESPONSE_PORT,
+    discovery_port: int = DEFAULT_UDP_DISCOVERY_PORT,
+    broadcast_address: str = BROADCAST_ADDRESS,
+) -> AsyncIterator[Dict[str, Any]]:
+    """Discovers dLight devices on the local network using UDP broadcast, yielding results as they arrive.
+
+    This function sends a broadcast UDP probe to the network and listens for
+    responses from dLight devices, yielding each unique device as it is discovered
+    until the timeout is reached.
+
+    Args:
+        timeout: The number of seconds to listen for responses before stopping.
+        response_port: The local UDP port to listen on for responses.
+        discovery_port: The UDP port dLight devices listen on for discovery probes.
+        broadcast_address: The network broadcast address to send the probe to.
+
+    Yields:
+        A dictionary containing information about a discovered device,
+        including its IP address.
+    """
+    loop = asyncio.get_running_loop()
+    discovered_devices_set: Set[str] = set()
+    queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
+    listen_transport: Optional[asyncio.DatagramTransport] = None
+    send_transport: Optional[asyncio.DatagramTransport] = None
+
+    try:
+        # Decode the hex payload (synchronous)
+        try:
+            probe_payload = binascii.unhexlify(UDP_DISCOVERY_PAYLOAD_HEX)
+        except binascii.Error as e:
+            _LOGGER.error(f"Internal error: failed to decode UDP probe payload hex: {e}")
+            return
+
+        # 1. Create the listening endpoint
+        listen_transport, _ = await loop.create_datagram_endpoint(
+            lambda: _DiscoveryProtocol(discovered_devices_set, queue=queue),
+            local_addr=("0.0.0.0", response_port),
+        )
+        _LOGGER.debug(f"Listening for discovery responses on 0.0.0.0:{response_port}")
+
+        # 2. Create a separate sending endpoint for broadcast
+        send_transport, _ = await loop.create_datagram_endpoint(
+            lambda: asyncio.DatagramProtocol(),  # Simple protocol for sending only
+            remote_addr=(broadcast_address, discovery_port),
+            allow_broadcast=True,  # Request broadcast permission
+        )
+
+        # Enable broadcasting on the sending socket
+        sending_socket = send_transport.get_extra_info("socket")
+        if sending_socket and isinstance(sending_socket, socket.socket):
+            try:
+                sending_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                _LOGGER.debug("Broadcast explicitly enabled for sending socket.")
+            except OSError as e:
+                _LOGGER.warning(
+                    f"Could not enable broadcast on sending socket: {e}. "
+                    "Discovery might fail if allow_broadcast=True was insufficient."
+                )
+        else:
+            _LOGGER.warning("Could not get underlying socket for sending transport to enable broadcast.")
+
+        # 3. Send the broadcast probe
+        _LOGGER.info(f"Sending discovery probe to {broadcast_address}:{discovery_port}")
+        send_transport.sendto(probe_payload)
+
+        # 4. Read from the queue until timeout is reached
+        start_time = loop.time()
+        while True:
+            elapsed = loop.time() - start_time
+            remaining = timeout - elapsed
+            if remaining <= 0:
+                break
+
+            try:
+                # Wait for next discovery item, up to remaining timeout
+                device = await asyncio.wait_for(queue.get(), timeout=remaining)
+                yield device
+            except asyncio.TimeoutError:
+                break
+
+        # Yield any remaining devices that responded and were queued up but not yet yielded
+        while not queue.empty():
+            try:
+                yield queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
+        _LOGGER.info(f"Discovery stream finished. Found {len(discovered_devices_set)} potential device(s).")
+
+    except PermissionError as e:
+        _LOGGER.error(
+            f"Permission denied for UDP broadcast or binding to port {response_port}. "
+            f"Try running with higher privileges if necessary. Error: {e}"
+        )
+    except OSError as e:
+        _LOGGER.error(
+            f"Network error during discovery (e.g., port {response_port} in use, "
+            f"or cannot bind/broadcast on network): {e}"
+        )
+    except Exception as e:
+        _LOGGER.exception(f"An unexpected error occurred during async discovery stream: {e}")
+    finally:
+        # Clean up transports
+        if send_transport:
+            try:
+                send_transport.close()
+                _LOGGER.debug("Discovery sender transport closed.")
+            except Exception as e_close:
+                _LOGGER.debug(f"Error closing send transport: {e_close}")
+        if listen_transport:
+            try:
+                listen_transport.close()
+                _LOGGER.debug("Discovery listener transport closed.")
+            except Exception as e_close:
+                _LOGGER.debug(f"Error closing listen transport: {e_close}")
+
