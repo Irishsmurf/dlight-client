@@ -6,7 +6,7 @@ import logging
 import ssl as ssl_module
 import time
 from contextlib import asynccontextmanager
-from typing import Dict, Optional, Tuple, Union
+from typing import AsyncIterator, Dict, Optional, Tuple, Union
 
 from .exceptions import DLightConnectionError, DLightTimeoutError
 
@@ -36,13 +36,15 @@ class ConnectionPool:
     @staticmethod
     def _key(host: str, port: int, ssl: _SSLArg) -> str:
         # Distinct SSLContext instances must not share connections.
-        ssl_identifier = ssl
+        ssl_identifier: Union[bool, ssl_module.SSLContext, str, None] = ssl
         if ssl and not isinstance(ssl, bool):
             ssl_identifier = f"ctx_{id(ssl)}"
         return f"{host}:{port}:{ssl_identifier}"
 
     @asynccontextmanager
-    async def connection(self, host: str, port: int, ssl: _SSLArg, connect_timeout: float):
+    async def connection(
+        self, host: str, port: int, ssl: _SSLArg, connect_timeout: float
+    ) -> AsyncIterator[Tuple[asyncio.StreamReader, asyncio.StreamWriter]]:
         """Yields a (reader, writer) pair for one request/response exchange."""
         key = self._key(host, port, ssl)
         # dict.setdefault runs without awaiting, so all concurrent callers
@@ -87,7 +89,7 @@ class ConnectionPool:
             raise DLightConnectionError(f"Network error connecting to {host}:{port}: {e}") from e
 
     @staticmethod
-    async def _close_writer(writer: asyncio.StreamWriter):
+    async def _close_writer(writer: asyncio.StreamWriter) -> None:
         if writer.is_closing():
             return
         try:
@@ -96,7 +98,7 @@ class ConnectionPool:
         except Exception as e:
             _LOGGER.debug(f"Error closing connection: {e}")
 
-    async def close_all(self):
+    async def close_all(self) -> None:
         """Closes all pooled connections."""
         _LOGGER.debug(f"Closing {len(self._connections)} persistent connections")
         while self._connections:

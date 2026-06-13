@@ -83,9 +83,46 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 git push
 ```
 
-## 6. Confirm
+## 6. Resolve addressed review threads
+
+For every comment that was **Applied**, resolve its GitHub review thread via GraphQL.
+
+First, fetch the thread IDs for the PR:
+```bash
+gh api graphql -f query='
+{
+  repository(owner: "Irishsmurf", name: "dlight-client") {
+    pullRequest(number: <PR>) {
+      reviewThreads(first: 50) {
+        nodes {
+          id
+          isResolved
+          comments(first: 1) {
+            nodes { body }
+          }
+        }
+      }
+    }
+  }
+}'
+```
+
+For each unresolved thread whose comment matches an **Applied** item, call:
+```bash
+gh api graphql -f query='
+mutation {
+  resolveReviewThread(input: {threadId: "<THREAD_ID>"}) {
+    thread { id isResolved }
+  }
+}'
+```
+
+Skip threads that are already resolved (`isResolved: true`) or correspond to **Discuss** / **Skip** items.
+
+## 7. Confirm
 
 Tell the user:
 - How many comments were applied, discussed, and skipped
 - The commit pushed
+- How many review threads were resolved
 - Any **Discuss** items still outstanding that need a decision

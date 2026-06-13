@@ -33,17 +33,18 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
             devices to.
     """
 
-    def __init__(self, discovered_devices_set: Set[str], results_list: List[Dict]):
+    def __init__(self, discovered_devices_set: Set[str], results_list: List[Dict[str, Any]]):
         self.transport: Optional[asyncio.DatagramTransport] = None
         self.discovered_devices_set = discovered_devices_set
         self.results_list = results_list
         super().__init__()
 
-    def connection_made(self, transport: asyncio.DatagramTransport):
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
         _LOGGER.debug("Discovery listener connection made (transport ready)")
+        assert isinstance(transport, asyncio.DatagramTransport)
         self.transport = transport
 
-    def datagram_received(self, data: bytes, addr: Tuple[str, int]):
+    def datagram_received(self, data: bytes, addr: Tuple[str, int]) -> None:
         ip_address = addr[0]
         _LOGGER.debug("Received %d bytes from %s", len(data), ip_address)
 
@@ -68,11 +69,11 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
         except Exception:
             _LOGGER.exception("Unexpected error processing datagram from %s", ip_address)
 
-    def error_received(self, exc: Exception):
+    def error_received(self, exc: Exception) -> None:
         # This is called for ICMP errors etc.
         _LOGGER.error(f"Discovery listener error: {exc}")
 
-    def connection_lost(self, exc: Optional[Exception]):
+    def connection_lost(self, exc: Optional[Exception]) -> None:
         # Called when the listening transport is closed.
         if exc:
             _LOGGER.error(f"Discovery listener connection lost unexpectedly: {exc}")
@@ -105,7 +106,7 @@ async def discover_devices(
     """
     loop = asyncio.get_running_loop()
     discovered_devices_set: Set[str] = set()
-    results_list: List[Dict] = []
+    results_list: List[Dict[str, Any]] = []
     listen_transport: Optional[asyncio.DatagramTransport] = None
     send_transport: Optional[asyncio.DatagramTransport] = None
 
