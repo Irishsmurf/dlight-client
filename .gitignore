@@ -13,3 +13,6 @@ build/
 .pytest_cache/
 .coverage
 coverage.xml
+site/
+.ruff_cache/
+.vscode/
