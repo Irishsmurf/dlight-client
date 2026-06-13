@@ -44,6 +44,7 @@ class DLightDevice:
         self._client = client
         self._state: DeviceState = {}
         self._state_listeners: list[Callable] = []
+        self._background_tasks: set[asyncio.Task] = set()
         _LOGGER.debug(f"DLightDevice initialized: ID='{self._id}', IP='{self._ip}'")
 
     @property
@@ -97,6 +98,22 @@ class DLightDevice:
             raise
         finally:
             self._emit_state_change(_old, self._clone_state(self._state))
+
+    async def toggle(self) -> CommandResult:
+        """Toggles the light on or off.
+
+        Uses the cached state where available to avoid a network round-trip.
+        Falls back to get_state() if the cache is empty.
+
+        Returns:
+            The response from the device.
+        """
+        _LOGGER.info(f"Device {self.id}: Toggling")
+        if "on" not in self._state:
+            await self.get_state()
+        if self._state.get("on"):
+            return await self.turn_off()
+        return await self.turn_on()
 
     async def set_brightness(self, brightness: int) -> CommandResult:
         """Sets the brightness of the light.
@@ -359,6 +376,8 @@ class DLightDevice:
                 res = cb(self, old, new)
                 if asyncio.iscoroutine(res):
                     task = asyncio.ensure_future(res)
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
                     task.add_done_callback(self._handle_listener_task_error)
             except Exception:
                 _LOGGER.exception("Device %s: error in state listener %r", self.id, cb)

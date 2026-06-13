@@ -47,6 +47,18 @@ async def turn_off() -> CommandResult
 
 Powers the lamp off. Updates the cache optimistically.
 
+### `toggle`
+
+```python
+async def toggle() -> CommandResult
+```
+
+Toggles the lamp's power state. Uses the cached `on` value to avoid a network
+round-trip; falls back to `get_state()` if the cache is empty.
+
+Delegates to `turn_on()` or `turn_off()`, so the cache is updated optimistically
+and state change listeners are notified.
+
 ### `set_brightness`
 
 ```python

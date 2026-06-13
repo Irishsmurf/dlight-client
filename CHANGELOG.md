@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `DLightDevice.toggle()` — convenience method that toggles the lamp on/off using the cached
+  state to avoid an extra network round-trip; falls back to `get_state()` if the cache is empty.
 - `DLightDevice.on_state_change(cb)` and `remove_state_listener(cb)` — register sync or async
   callbacks that fire whenever device state settles to a new value. Callbacks receive
   `(device, old_state, new_state)`; async callables are scheduled without blocking the caller.
