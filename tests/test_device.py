@@ -485,7 +485,8 @@ class TestDLightDeviceStateListeners(unittest.IsolatedAsyncioTestCase):
     # --- Registration ---
 
     def test_duplicate_registration_ignored(self):
-        cb = lambda d, o, n: None
+        def cb(d, o, n):
+            pass
         self.device.on_state_change(cb)
         self.device.on_state_change(cb)
         self.assertEqual(len(self.device._state_listeners), 1)
