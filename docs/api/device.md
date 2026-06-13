@@ -108,6 +108,18 @@ info = await lamp.get_info()
 # {'deviceId': '...', 'deviceModel': '...', 'swVersion': '...', 'hwVersion': '...', 'macAddress': '...'}
 ```
 
+### `ping`
+
+```python
+async def ping(timeout: float = 2.0) -> bool
+```
+
+Returns `True` if the device is reachable, `False` if it timed out or the connection was refused. Never raises. Does not update the state cache.
+
+| Parameter | Default | Description |
+|---|---|---|
+| `timeout` | `2.0` | Seconds to wait for a response. Overrides the client's default timeout for this call only. |
+
 ### `flash`
 
 ```python

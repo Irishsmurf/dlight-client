@@ -121,6 +121,7 @@ class AsyncDLightClient:
         command: Dict[str, Any],
         port: int = DEFAULT_TCP_PORT,
         ssl: Optional[Union[bool, ssl.SSLContext]] = None,
+        timeout: Optional[float] = None,
     ) -> CommandResult:
         """Sends a command to a dLight device and returns the response.
 
@@ -150,6 +151,8 @@ class AsyncDLightClient:
         if ssl is None:
             ssl = self.ssl
 
+        effective_timeout = timeout if timeout is not None else self.default_timeout
+
         operation = f"command {command.get('commandType', 'UNKNOWN')} to {target_ip}:{port}"
         json_data = encode_command(command)
         _LOGGER.debug(f"Prepared {operation} ({len(json_data)} bytes, SSL: {bool(ssl)}): "
@@ -157,16 +160,16 @@ class AsyncDLightClient:
 
         for attempt in range(self.max_retries + 1):
             try:
-                async with self._pool.connection(target_ip, port, ssl, self.default_timeout) as (reader, writer):
+                async with self._pool.connection(target_ip, port, ssl, effective_timeout) as (reader, writer):
                     writer.write(json_data)
                     try:
-                        await asyncio.wait_for(writer.drain(), timeout=self.default_timeout)
+                        await asyncio.wait_for(writer.drain(), timeout=effective_timeout)
                     except asyncio.TimeoutError:
                         raise DLightTimeoutError(f"Timeout sending data for {operation}") from None
                     except OSError as e:
                         raise DLightConnectionError(f"Network error sending data for {operation}: {e}") from e
 
-                    return await read_response(reader, self.default_timeout, operation, command=command)
+                    return await read_response(reader, effective_timeout, operation, command=command)
 
             except (DLightTimeoutError, DLightConnectionError) as e:
                 if attempt < self.max_retries:
@@ -274,12 +277,18 @@ class AsyncDLightClient:
         }
         return await self._async_send_tcp_command(target_ip, command)
 
-    async def query_device_info(self, target_ip: str, device_id: str) -> CommandResult:
+    async def query_device_info(
+        self,
+        target_ip: str,
+        device_id: str,
+        timeout: Optional[float] = None,
+    ) -> CommandResult:
         """Queries the device information of the dLight.
 
         Args:
             target_ip: The IP address of the dLight device.
             device_id: The ID of the dLight device.
+            timeout: Optional timeout override in seconds for this call only.
 
         Returns:
             The response from the device, containing its information.
@@ -291,7 +300,7 @@ class AsyncDLightClient:
             "commandType": COMMAND_TYPE_QUERY_DEVICE_INFO,
             "commands": [],  # No specific commands needed for query
         }
-        return await self._async_send_tcp_command(target_ip, command)
+        return await self._async_send_tcp_command(target_ip, command, timeout=timeout)
 
     async def connect_to_wifi(
         self,

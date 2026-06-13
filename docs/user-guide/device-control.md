@@ -71,6 +71,25 @@ info = await lamp.get_info()
 # {'deviceId': 'DL12345', 'deviceModel': '...', 'swVersion': '...', 'hwVersion': '...', 'macAddress': '...'}
 ```
 
+### `ping(timeout=2.0)`
+
+A lightweight availability check. Returns `True` if the device responds, `False` if it times out or connection is refused. Never raises.
+
+```python
+if await lamp.ping():
+    await lamp.turn_on()
+else:
+    print("Device unreachable")
+```
+
+Pass a custom `timeout` to override the client default for this call only:
+
+```python
+alive = await lamp.ping(timeout=1.0)
+```
+
+`ping()` does not update the state cache and does not fire state-change listeners.
+
 ## State caching and optimistic updates
 
 `DLightDevice` maintains an internal cache (`_state`). When you call `set_brightness(50)`:
