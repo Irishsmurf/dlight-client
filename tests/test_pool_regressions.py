@@ -15,12 +15,13 @@ they now guard against reintroducing the bugs.
 import asyncio
 import unittest
 
+from fake_server import FakeDLightServer
+
 from dlightclient import (
+    STATUS_SUCCESS,
     AsyncDLightClient,
     DLightTimeoutError,
-    STATUS_SUCCESS,
 )
-from fake_server import FakeDLightServer
 
 
 class TestConnectionPoolRegressions(unittest.IsolatedAsyncioTestCase):

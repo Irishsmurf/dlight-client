@@ -1,22 +1,22 @@
 # dlightclient/cli.py
 """Command-line interface / Example usage script for dlightclient."""
 
+import argparse
 import asyncio
 import logging
-import argparse
 import ssl
 
 from . import (
     AsyncDLightClient,
-    DLightDevice,
-    discover_devices,
-    DLightError,
-    DLightTimeoutError,
-    DLightConnectionError,
-    DLightResponseError,
     DLightCommandError,
+    DLightConnectionError,
+    DLightDevice,
+    DLightError,
+    DLightResponseError,
+    DLightTimeoutError,
+    constants,
+    discover_devices,
 )
-from . import constants
 
 # Configure logging for the example script
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")

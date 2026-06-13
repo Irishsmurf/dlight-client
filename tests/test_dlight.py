@@ -1,26 +1,26 @@
-import unittest
 import asyncio
-import socket  # Still needed for socket errors, constants
 import json
+import socket  # Still needed for socket errors, constants
 import struct
-from unittest.mock import patch, MagicMock, AsyncMock
+import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from fake_server import FakeDLightServer
 
 # --- Import from the package structure (an import failure must fail loudly) ---
 from dlightclient import (
-    AsyncDLightClient,
-    discover_devices,
-    DLightConnectionError,
-    DLightTimeoutError,
-    DLightResponseError,
     FACTORY_RESET_IP,
     MAX_PAYLOAD_SIZE,
     STATUS_SUCCESS,
+    AsyncDLightClient,
+    DLightConnectionError,
+    DLightResponseError,
+    DLightTimeoutError,
+    discover_devices,
 )
 
 # Import the internal protocol class for UDP testing
 from dlightclient.discovery import _DiscoveryProtocol
-
-from fake_server import FakeDLightServer
 
 # Module paths for patching specific implementations
 CLIENT_MODULE_PATH = "dlightclient.client"
