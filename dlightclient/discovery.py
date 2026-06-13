@@ -38,7 +38,7 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
         self,
         discovered_devices_set: Set[str],
         results_list: List[Dict[str, Any]],
-        queue: Optional[asyncio.Queue] = None,
+        queue: Optional[asyncio.Queue[Dict[str, Any]]] = None,
     ):
         self.transport: Optional[asyncio.DatagramTransport] = None
         self.discovered_devices_set = discovered_devices_set
