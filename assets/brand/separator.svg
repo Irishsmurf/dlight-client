@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 20" role="separator" aria-hidden="true">
+  <defs>
+    <linearGradient id="sep" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0"    stop-color="#FFD43B" stop-opacity="0"/>
+      <stop offset="0.2"  stop-color="#FFD43B"/>
+      <stop offset="0.5"  stop-color="#FFF1DC"/>
+      <stop offset="0.8"  stop-color="#7CACF8"/>
+      <stop offset="1"    stop-color="#7CACF8" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- tunable-white gradient rule, fading to transparent at both ends -->
+  <rect x="0" y="8" width="800" height="4" rx="2" fill="url(#sep)"/>
+</svg>

@@ -1,0 +1,266 @@
+/* dlight-client brand tokens — Python × dlight amalgamation */
+
+:root {
+  --dlight-blue:    #3776ab;   /* Python Blue — structural colour */
+  --dlight-blue-dk: #5b9bd5;   /* lightened for dark backgrounds */
+  --dlight-yellow:  #ffd43b;   /* Python Yellow — accent */
+  --dlight-warm:    #ffd43b;   /* tunable-white warm end */
+  --dlight-neutral: #fff1dc;   /* tunable-white mid */
+  --dlight-cool:    #7cacf8;   /* tunable-white cool end */
+  --dlight-grey:    #3c4043;   /* wordmark / body text */
+  --dlight-grey-dk: #e8eaed;   /* wordmark on dark */
+}
+
+/* ── Material theme overrides ─────────────────────────────────────────── */
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color:              var(--dlight-blue);
+  --md-primary-fg-color--light:       var(--dlight-blue-dk);
+  --md-primary-fg-color--dark:        #265a87;
+  --md-primary-bg-color:              #ffffff;
+  --md-accent-fg-color:               var(--dlight-yellow);
+  --md-accent-fg-color--transparent:  rgba(255, 212, 59, 0.12);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color:              var(--dlight-blue-dk);
+  --md-primary-fg-color--light:       #85bae8;
+  --md-primary-fg-color--dark:        var(--dlight-blue);
+  --md-primary-bg-color:              #ffffff;
+  --md-accent-fg-color:               var(--dlight-yellow);
+  --md-accent-fg-color--transparent:  rgba(255, 212, 59, 0.14);
+}
+
+/* ── H1 tunable-white underline ───────────────────────────────────────── */
+
+.md-typeset h1 {
+  color: var(--dlight-blue);
+}
+
+.md-typeset h1::after {
+  content: "";
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  margin-top: 6px;
+  background: linear-gradient(
+    to right,
+    var(--dlight-warm),
+    var(--dlight-neutral),
+    var(--dlight-cool)
+  );
+}
+
+/* ── Brand rule (decorative gradient divider) ─────────────────────────── */
+
+.dlight-rule {
+  height: 4px;
+  border: none;
+  border-radius: 2px;
+  margin: 2rem 0;
+  background: linear-gradient(
+    to right,
+    var(--dlight-warm),
+    var(--dlight-neutral),
+    var(--dlight-cool)
+  );
+}
+
+/* ── Hero block ───────────────────────────────────────────────────────── */
+
+.dlight-hero {
+  text-align: center;
+  padding: 1.5rem 0 0.5rem;
+}
+
+.dlight-hero img {
+  max-width: 320px;
+  height: auto;
+}
+
+.dlight-tagline {
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--dlight-blue);
+  margin: 0.25rem 0 1.5rem;
+  letter-spacing: -0.01em;
+}
+
+[data-md-color-scheme="slate"] .dlight-tagline {
+  color: var(--dlight-blue-dk);
+}
+
+/* ── Badge row (homepage feature pills) ───────────────────────────────── */
+
+.dl-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 1rem 0;
+  justify-content: center;
+}
+
+.dl-badge {
+  display: inline-block;
+  padding: 0.2rem 0.75rem;
+  border-radius: 1rem;
+  background: var(--dlight-blue);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* ── Colour swatch blocks (brand page) ───────────────────────────────── */
+
+.dlight-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.dlight-swatch {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 130px;
+  height: 80px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #fff;
+  padding: 0.4rem;
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+
+/* ── Custom separators ────────────────────────────────────────────────── */
+
+/* Use in Markdown as: <hr class="dlight-sep"/> */
+.dlight-sep {
+  border: none;
+  height: 4px;
+  border-radius: 2px;
+  margin: 2rem 0;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--dlight-warm) 20%,
+    var(--dlight-neutral) 50%,
+    var(--dlight-cool) 80%,
+    transparent
+  );
+}
+
+/* Full-bleed variant (no fade) */
+.dlight-sep-full {
+  border: none;
+  height: 6px;
+  border-radius: 3px;
+  margin: 2rem 0;
+  background: linear-gradient(
+    to right,
+    var(--dlight-warm),
+    var(--dlight-neutral),
+    var(--dlight-cool)
+  );
+}
+
+/* ── Custom bullet points ──────────────────────────────────────────────── */
+
+/* Lamp bullet — use on <ul class="dl-list-lamp"> */
+ul.dl-list-lamp {
+  list-style: none;
+  padding-left: 1.6rem;
+}
+
+ul.dl-list-lamp li::before {
+  content: "";
+  display: inline-block;
+  width: 1.1em;
+  height: 1.1em;
+  margin-right: 0.5em;
+  vertical-align: -0.2em;
+  background-image: url("../brand/bullet-lamp.svg");
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+
+/* Gradient dot — use on <ul class="dl-list-dot"> */
+ul.dl-list-dot {
+  list-style: none;
+  padding-left: 1.6rem;
+}
+
+ul.dl-list-dot li::before {
+  content: "";
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  margin-right: 0.6em;
+  vertical-align: 0.05em;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 40%, var(--dlight-yellow), var(--dlight-blue));
+}
+
+/* Chevron — use on <ol class="dl-list-steps"> */
+ol.dl-list-steps {
+  list-style: none;
+  padding-left: 1.6rem;
+  counter-reset: dl-step;
+}
+
+ol.dl-list-steps li {
+  counter-increment: dl-step;
+  position: relative;
+  padding-left: 0.2rem;
+}
+
+ol.dl-list-steps li::before {
+  content: counter(dl-step);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4em;
+  height: 1.4em;
+  margin-right: 0.5em;
+  vertical-align: -0.15em;
+  border-radius: 50%;
+  background: var(--dlight-blue);
+  color: #fff;
+  font-size: 0.75em;
+  font-weight: 700;
+}
+
+/* ── Admonition accent colours ────────────────────────────────────────── */
+
+.md-typeset .admonition.tip,
+.md-typeset details.tip {
+  border-color: var(--dlight-blue);
+}
+
+.md-typeset .admonition.tip > .admonition-title,
+.md-typeset details.tip > summary {
+  background-color: rgba(55, 118, 171, 0.12);
+}
+
+.md-typeset .admonition.tip > .admonition-title::before,
+.md-typeset details.tip > summary::before {
+  background-color: var(--dlight-blue);
+}
+
+/* ── Navigation tab active indicator ─────────────────────────────────── */
+
+.md-tabs__link--active,
+.md-tabs__link:focus,
+.md-tabs__link:hover {
+  color: var(--dlight-yellow) !important;
+}
+
+/* ── Code block copy button hover ────────────────────────────────────── */
+
+.md-clipboard:hover {
+  color: var(--dlight-yellow);
+}
