@@ -78,7 +78,7 @@ class AsyncDLightClient:
         return self._pool.persistent
 
     @persistent.setter
-    def persistent(self, value: bool):
+    def persistent(self, value: bool) -> None:
         self._pool.persistent = value
 
     @property
@@ -87,10 +87,10 @@ class AsyncDLightClient:
         return self._pool.idle_timeout
 
     @idle_timeout.setter
-    def idle_timeout(self, value: float):
+    def idle_timeout(self, value: float) -> None:
         self._pool.idle_timeout = value
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "AsyncDLightClient":
         """Enter the context manager.
 
         Persistence is controlled solely by the ``persistent`` constructor
@@ -99,11 +99,11 @@ class AsyncDLightClient:
         """
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Close all connections when exiting the context manager."""
         await self.close()
 
-    async def close(self):
+    async def close(self) -> None:
         """Closes all open persistent connections."""
         await self._pool.close_all()
 
@@ -185,6 +185,7 @@ class AsyncDLightClient:
             except Exception as e:
                 _LOGGER.exception(f"An unexpected error occurred during {operation}")
                 raise DLightError(f"An unexpected error occurred during {operation}: {e}") from e
+        raise DLightError(f"Failed {operation}: loop terminated without returning or raising.")
 
     # --- Public API Methods ---
 

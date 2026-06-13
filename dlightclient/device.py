@@ -3,7 +3,7 @@
 
 import asyncio
 import logging
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 # Import necessary components from the library
 from .client import AsyncDLightClient
@@ -43,8 +43,8 @@ class DLightDevice:
         self._id = device_id
         self._client = client
         self._state: DeviceState = {}
-        self._state_listeners: list[Callable] = []
-        self._background_tasks: set[asyncio.Task] = set()
+        self._state_listeners: list[Callable[["DLightDevice", DeviceState, DeviceState], Any]] = []
+        self._background_tasks: set[asyncio.Task[Any]] = set()
         _LOGGER.debug(f"DLightDevice initialized: ID='{self._id}', IP='{self._ip}'")
 
     @property
@@ -290,7 +290,10 @@ class DLightDevice:
 
         # Optimistic update — both fields in one step before any network call
         self._state["brightness"] = brightness
-        self._state.setdefault("color", {})["temperature"] = temperature
+        if "color" not in self._state or not isinstance(self._state["color"], dict):
+            self._state["color"] = {"temperature": temperature}
+        else:
+            self._state["color"]["temperature"] = temperature
 
         try:
             results = await asyncio.gather(
@@ -302,20 +305,26 @@ class DLightDevice:
             exc_brightness = results[0] if isinstance(results[0], Exception) else None
             exc_temperature = results[1] if isinstance(results[1], Exception) else None
 
-            if exc_brightness or exc_temperature:
+            if exc_brightness is not None:
                 # Roll back only the field(s) that actually failed so the cache
                 # stays in sync with the physical device state.
-                if exc_brightness:
-                    if old_brightness is not None:
-                        self._state["brightness"] = old_brightness
-                    elif "brightness" in self._state:
-                        del self._state["brightness"]
-                if exc_temperature:
+                if old_brightness is not None:
+                    self._state["brightness"] = old_brightness
+                elif "brightness" in self._state:
+                    del self._state["brightness"]
+                if exc_temperature is not None:
                     if old_color is not None:
                         self._state["color"] = old_color
                     elif "color" in self._state:
                         del self._state["color"]
-                raise exc_brightness or exc_temperature
+                raise exc_brightness
+
+            if exc_temperature is not None:
+                if old_color is not None:
+                    self._state["color"] = old_color
+                elif "color" in self._state:
+                    del self._state["color"]
+                raise exc_temperature
 
             return (results[0], results[1])  # type: ignore[return-value]
         finally:
@@ -433,7 +442,7 @@ class DLightDevice:
 
         return success
 
-    def on_state_change(self, callback: Callable) -> None:
+    def on_state_change(self, callback: Callable[["DLightDevice", DeviceState, DeviceState], Any]) -> None:
         """Register a listener called whenever device state settles to a new value.
 
         The callback signature must be::
@@ -454,7 +463,7 @@ class DLightDevice:
         if callback not in self._state_listeners:
             self._state_listeners.append(callback)
 
-    def remove_state_listener(self, callback: Callable) -> None:
+    def remove_state_listener(self, callback: Callable[["DLightDevice", DeviceState, DeviceState], Any]) -> None:
         """Remove a previously registered state change listener.
 
         Args:

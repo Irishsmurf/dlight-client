@@ -5,6 +5,7 @@ import argparse
 import asyncio
 import logging
 import ssl
+from typing import Any
 
 from . import (
     AsyncDLightClient,
@@ -23,7 +24,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 log = logging.getLogger(__name__)
 
 
-async def run_discovery(duration: float):
+async def run_discovery(duration: float) -> list[dict[str, Any]]:
     """Scans the network for dLight devices and prints the results.
 
     Args:
@@ -54,7 +55,7 @@ async def run_discovery(duration: float):
         return []
 
 
-async def run_interaction(client: AsyncDLightClient, target_ip: str, device_id: str):
+async def run_interaction(client: AsyncDLightClient, target_ip: str, device_id: str) -> None:
     """Demonstrates a sequence of interactions with a dLight device.
 
     This function showcases how to use the DLightDevice wrapper to query device
@@ -131,7 +132,7 @@ async def run_interaction(client: AsyncDLightClient, target_ip: str, device_id: 
         log.exception(f"Unexpected error during interaction example with {device.id}")
 
 
-async def run_wifi_connect(client: AsyncDLightClient, device_id: str, ssid: str, password: str):
+async def run_wifi_connect(client: AsyncDLightClient, device_id: str, ssid: str, password: str) -> None:
     """Sends Wi-Fi credentials to a dLight device in SoftAP mode.
 
     This function is used for initial device provisioning. It assumes the dLight
@@ -163,7 +164,7 @@ async def run_wifi_connect(client: AsyncDLightClient, device_id: str, ssid: str,
         log.exception("Unexpected error during Wi-Fi connect attempt")
 
 
-async def main():
+async def main() -> None:
     """Parses command-line arguments and executes the requested actions.
 
     This function serves as the main entry point for the command-line
