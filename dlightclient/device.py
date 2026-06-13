@@ -296,21 +296,28 @@ class DLightDevice:
             results = await asyncio.gather(
                 self._client.set_brightness(self.ip, self.id, brightness),
                 self._client.set_color_temperature(self.ip, self.id, temperature),
+                return_exceptions=True,
             )
-            return tuple(results)  # type: ignore[return-value]
-        except Exception:
-            # Roll back both fields atomically
-            if old_brightness is not None:
-                self._state["brightness"] = old_brightness
-            elif "brightness" in self._state:
-                del self._state["brightness"]
 
-            if old_color is not None:
-                self._state["color"] = old_color
-            elif "color" in self._state:
-                del self._state["color"]
+            exc_brightness = results[0] if isinstance(results[0], Exception) else None
+            exc_temperature = results[1] if isinstance(results[1], Exception) else None
 
-            raise
+            if exc_brightness or exc_temperature:
+                # Roll back only the field(s) that actually failed so the cache
+                # stays in sync with the physical device state.
+                if exc_brightness:
+                    if old_brightness is not None:
+                        self._state["brightness"] = old_brightness
+                    elif "brightness" in self._state:
+                        del self._state["brightness"]
+                if exc_temperature:
+                    if old_color is not None:
+                        self._state["color"] = old_color
+                    elif "color" in self._state:
+                        del self._state["color"]
+                raise exc_brightness or exc_temperature
+
+            return (results[0], results[1])  # type: ignore[return-value]
         finally:
             self._emit_state_change(_old, self._clone_state(self._state))
 

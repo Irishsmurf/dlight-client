@@ -692,16 +692,21 @@ class TestDLightDeviceApplyScene(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await self.device.apply_scene(temperature=3000)
 
-    async def test_apply_scene_rolls_back_on_error(self):
+    async def test_apply_scene_rolls_back_only_failed_field(self):
+        # brightness fails, temperature succeeds — only brightness rolls back
         self.device._state = {"brightness": 50, "color": {"temperature": 3000}}
         self.mock_client.set_brightness.side_effect = DLightTimeoutError("timeout")
         with self.assertRaises(DLightTimeoutError):
             await self.device.apply_scene(brightness=80, temperature=4000)
+        # brightness rolled back to original
         self.assertEqual(self.device._state.get("brightness"), 50)
-        self.assertEqual(self.device._state.get("color", {}).get("temperature"), 3000)
+        # temperature kept at new value because that command succeeded
+        self.assertEqual(self.device._state.get("color", {}).get("temperature"), 4000)
 
-    async def test_apply_scene_does_not_fire_listener_on_rollback(self):
+    async def test_apply_scene_does_not_fire_listener_when_both_fail(self):
+        # both commands fail → full rollback → state unchanged → no listener event
         self.mock_client.set_brightness.side_effect = DLightTimeoutError("timeout")
+        self.mock_client.set_color_temperature.side_effect = DLightTimeoutError("timeout")
         events = []
         self.device.on_state_change(lambda d, o, n: events.append(n))
         with self.assertRaises(DLightTimeoutError):
