@@ -25,7 +25,7 @@ from .constants import (
 from .device import (
     DLightDevice,
 )
-from .discovery import discover_devices
+from .discovery import discover_devices, discover_devices_stream
 from .exceptions import (
     DLightCommandError,
     DLightConnectionError,
@@ -40,6 +40,7 @@ __all__ = [
     "AsyncDLightClient",
     # Discovery
     "discover_devices",
+    "discover_devices_stream",
     # Exceptions
     "DLightError",
     "DLightConnectionError",

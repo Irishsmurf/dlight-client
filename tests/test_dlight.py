@@ -17,6 +17,7 @@ from dlightclient import (
     DLightResponseError,
     DLightTimeoutError,
     discover_devices,
+    discover_devices_stream,
 )
 
 # Import the internal protocol class for UDP testing
@@ -603,6 +604,174 @@ class TestAsyncDLightClientPersistence(unittest.IsolatedAsyncioTestCase):
 
         await asyncio.sleep(0.05)
         self.assertEqual(self.server.closed_connections, 1)
+
+
+class TestAsyncDLightClientUDPStream(unittest.IsolatedAsyncioTestCase):
+    """Tests the async streaming UDP discovery."""
+
+    async def test_discover_devices_stream_one_response(self):
+        """Test discover_devices_stream yielding one device."""
+        loop = asyncio.get_running_loop()
+        mock_listen_transport = AsyncMock(spec=asyncio.DatagramTransport)
+        mock_send_transport = AsyncMock(spec=asyncio.DatagramTransport)
+        mock_send_sock = MagicMock(spec=socket.socket)
+        mock_send_transport.get_extra_info.return_value = mock_send_sock
+
+        protocol_instance_holder = [None]
+        await_count = 0
+
+        async def mock_create_datagram_endpoint(protocol_factory, local_addr=None, remote_addr=None, **kwargs):
+            nonlocal await_count
+            await_count += 1
+            if await_count == 1:
+                proto = protocol_factory()
+                protocol_instance_holder[0] = proto
+                return (mock_listen_transport, proto)
+            else:
+                return (mock_send_transport, MagicMock())
+
+        # Patch create_datagram_endpoint on the running event loop
+        with patch.object(loop, "create_datagram_endpoint", new=mock_create_datagram_endpoint):
+            device_ip = "192.168.1.101"
+            device_id = "streamdev1"
+            response_payload_dict = {"deviceModel": "M1", "deviceId": device_id}
+            response_bytes = json.dumps(response_payload_dict).encode("utf-8")
+            sender_address = (device_ip, 12345)
+
+            devices = []
+            async def run_stream():
+                async for dev in discover_devices_stream(timeout=0.2):
+                    devices.append(dev)
+
+            stream_task = asyncio.create_task(run_stream())
+            await asyncio.sleep(0.01)
+
+            proto_instance = protocol_instance_holder[0]
+            self.assertIsNotNone(proto_instance)
+            proto_instance.datagram_received(response_bytes, sender_address)
+
+            await stream_task
+
+            self.assertEqual(len(devices), 1)
+            self.assertEqual(devices[0]["deviceId"], device_id)
+            self.assertEqual(devices[0]["ip_address"], device_ip)
+            
+            mock_listen_transport.close.assert_called_once()
+            mock_send_transport.close.assert_called_once()
+
+    async def test_discover_devices_stream_multiple_responses(self):
+        """Test discover_devices_stream yielding multiple devices incrementally."""
+        loop = asyncio.get_running_loop()
+        mock_listen_transport = AsyncMock(spec=asyncio.DatagramTransport)
+        mock_send_transport = AsyncMock(spec=asyncio.DatagramTransport)
+        mock_send_sock = MagicMock(spec=socket.socket)
+        mock_send_transport.get_extra_info.return_value = mock_send_sock
+
+        protocol_instance_holder = [None]
+        await_count = 0
+
+        async def mock_create_datagram_endpoint(protocol_factory, local_addr=None, remote_addr=None, **kwargs):
+            nonlocal await_count
+            await_count += 1
+            if await_count == 1:
+                proto = protocol_factory()
+                protocol_instance_holder[0] = proto
+                return (mock_listen_transport, proto)
+            else:
+                return (mock_send_transport, MagicMock())
+
+        with patch.object(loop, "create_datagram_endpoint", new=mock_create_datagram_endpoint):
+            dev1_ip = "192.168.1.101"
+            dev1_payload = {"deviceModel": "M1", "deviceId": "dev1"}
+            dev1_bytes = json.dumps(dev1_payload).encode("utf-8")
+
+            dev2_ip = "192.168.1.102"
+            dev2_payload = {"deviceModel": "M2", "deviceId": "dev2"}
+            dev2_bytes = json.dumps(dev2_payload).encode("utf-8")
+
+            devices = []
+            async def run_stream():
+                async for dev in discover_devices_stream(timeout=0.3):
+                    devices.append(dev)
+
+            stream_task = asyncio.create_task(run_stream())
+            await asyncio.sleep(0.01)
+
+            proto_instance = protocol_instance_holder[0]
+            self.assertIsNotNone(proto_instance)
+
+            # Receive first device
+            proto_instance.datagram_received(dev1_bytes, (dev1_ip, 12345))
+            await asyncio.sleep(0.02)
+            self.assertEqual(len(devices), 1)
+            self.assertEqual(devices[0]["deviceId"], "dev1")
+
+            # Receive second device
+            proto_instance.datagram_received(dev2_bytes, (dev2_ip, 12345))
+            await asyncio.sleep(0.02)
+            self.assertEqual(len(devices), 2)
+            self.assertEqual(devices[1]["deviceId"], "dev2")
+
+            await stream_task
+            self.assertEqual(len(devices), 2)
+
+    async def test_discover_devices_stream_deduplication(self):
+        """Test discover_devices_stream deduplicates by IP address."""
+        loop = asyncio.get_running_loop()
+        mock_listen_transport = AsyncMock(spec=asyncio.DatagramTransport)
+        mock_send_transport = AsyncMock(spec=asyncio.DatagramTransport)
+        mock_send_sock = MagicMock(spec=socket.socket)
+        mock_send_transport.get_extra_info.return_value = mock_send_sock
+
+        protocol_instance_holder = [None]
+        await_count = 0
+
+        async def mock_create_datagram_endpoint(protocol_factory, local_addr=None, remote_addr=None, **kwargs):
+            nonlocal await_count
+            await_count += 1
+            if await_count == 1:
+                proto = protocol_factory()
+                protocol_instance_holder[0] = proto
+                return (mock_listen_transport, proto)
+            else:
+                return (mock_send_transport, MagicMock())
+
+        with patch.object(loop, "create_datagram_endpoint", new=mock_create_datagram_endpoint):
+            dev_ip = "192.168.1.101"
+            dev_payload = {"deviceModel": "M1", "deviceId": "dev1"}
+            dev_bytes = json.dumps(dev_payload).encode("utf-8")
+
+            devices = []
+            async def run_stream():
+                async for dev in discover_devices_stream(timeout=0.2):
+                    devices.append(dev)
+
+            stream_task = asyncio.create_task(run_stream())
+            await asyncio.sleep(0.01)
+
+            proto_instance = protocol_instance_holder[0]
+            self.assertIsNotNone(proto_instance)
+
+            # Receive the same device twice
+            proto_instance.datagram_received(dev_bytes, (dev_ip, 12345))
+            proto_instance.datagram_received(dev_bytes, (dev_ip, 12345))
+            await asyncio.sleep(0.02)
+
+            await stream_task
+            self.assertEqual(len(devices), 1)
+
+    async def test_discover_devices_stream_permission_error(self):
+        """Test discover_devices_stream handling of PermissionError during bind."""
+        loop = asyncio.get_running_loop()
+
+        async def mock_create_datagram_endpoint(protocol_factory, local_addr=None, remote_addr=None, **kwargs):
+            raise PermissionError("Permission denied for UDP bind")
+
+        with patch.object(loop, "create_datagram_endpoint", new=mock_create_datagram_endpoint):
+            devices = []
+            async for dev in discover_devices_stream(timeout=0.2):
+                devices.append(dev)
+            self.assertEqual(devices, [])
 
 
 if __name__ == "__main__":
