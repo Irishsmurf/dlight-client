@@ -939,6 +939,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#lightscene" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LightScene
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#colorstate" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1133,6 +1144,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#lightscene" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LightScene
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#colorstate" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1203,52 +1225,96 @@
 
 <h1 id="models">Models<a class="headerlink" href="#models" title="Permanent link">&para;</a></h1>
 <p>dlight-client uses <code>TypedDict</code> classes to represent structured data returned from device calls. These provide IDE autocompletion and static type-checking support without imposing runtime overhead.</p>
-<p>All models are importable from <code>dlightclient.models</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">dlightclient.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">DeviceState</span><span class="p">,</span> <span class="n">DeviceInfo</span><span class="p">,</span> <span class="n">CommandResult</span><span class="p">,</span> <span class="n">ColorState</span>
+<p>All models are importable from <code>dlightclient.models</code> (or directly from <code>dlightclient</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">dlightclient</span><span class="w"> </span><span class="kn">import</span> <span class="n">LightScene</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">dlightclient.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">DeviceState</span><span class="p">,</span> <span class="n">DeviceInfo</span><span class="p">,</span> <span class="n">CommandResult</span><span class="p">,</span> <span class="n">ColorState</span>
+</code></pre></div>
+<h2 id="lightscene"><code>LightScene</code><a class="headerlink" href="#lightscene" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">LightScene</span><span class="p">:</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">brightness</span><span class="p">:</span> <span class="nb">int</span>   <span class="c1"># 0–100</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">temperature</span><span class="p">:</span> <span class="nb">int</span>  <span class="c1"># 2600–6000 K</span>
+</code></pre></div>
+<p>An immutable brightness + colour temperature preset. Pass it to <code>DLightDevice.apply_scene()</code>.</p>
+<p>Four built-in scenes are provided as class attributes:</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th><code>brightness</code></th>
+<th><code>temperature</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LightScene.READING</code></td>
+<td>70</td>
+<td>4000 K</td>
+</tr>
+<tr>
+<td><code>LightScene.EVENING</code></td>
+<td>30</td>
+<td>2700 K</td>
+</tr>
+<tr>
+<td><code>LightScene.DAYLIGHT</code></td>
+<td>100</td>
+<td>6000 K</td>
+</tr>
+<tr>
+<td><code>LightScene.FOCUS</code></td>
+<td>100</td>
+<td>5000 K</td>
+</tr>
+</tbody>
+</table>
+<p>Custom scenes can be constructed inline:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">MOVIE_NIGHT</span> <span class="o">=</span> <span class="n">LightScene</span><span class="p">(</span><span class="n">brightness</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">temperature</span><span class="o">=</span><span class="mi">2700</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">apply_scene</span><span class="p">(</span><span class="n">MOVIE_NIGHT</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="colorstate"><code>ColorState</code><a class="headerlink" href="#colorstate" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">ColorState</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">temperature</span><span class="p">:</span> <span class="nb">int</span>   <span class="c1"># colour temperature in Kelvin (2600–6000)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">ColorState</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">temperature</span><span class="p">:</span> <span class="nb">int</span>   <span class="c1"># colour temperature in Kelvin (2600–6000)</span>
 </code></pre></div>
 <p>Embedded inside <code>DeviceState.color</code>.</p>
 <h2 id="devicestate"><code>DeviceState</code><a class="headerlink" href="#devicestate" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">DeviceState</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">on</span><span class="p">:</span>         <span class="nb">bool</span>        <span class="c1"># True = on, False = off</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">brightness</span><span class="p">:</span> <span class="nb">int</span>         <span class="c1"># 0–100</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">color</span><span class="p">:</span>      <span class="n">ColorState</span>  <span class="c1"># {&#39;temperature&#39;: 3000}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">DeviceState</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">on</span><span class="p">:</span>         <span class="nb">bool</span>        <span class="c1"># True = on, False = off</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">brightness</span><span class="p">:</span> <span class="nb">int</span>         <span class="c1"># 0–100</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">color</span><span class="p">:</span>      <span class="n">ColorState</span>  <span class="c1"># {&#39;temperature&#39;: 3000}</span>
 </code></pre></div>
 <p>Returned by <code>DLightDevice.get_state()</code> and embedded in <code>CommandResult.states</code>.</p>
 <p>All fields are optional (<code>total=False</code>) — the device may not include every field in every response.</p>
 <p><strong>Example:</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">state</span> <span class="o">=</span> <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">get_state</span><span class="p">()</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">if</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;on&quot;</span><span class="p">):</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">temp</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;color&quot;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;temperature&quot;</span><span class="p">,</span> <span class="mi">4000</span><span class="p">)</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Lamp is on at </span><span class="si">{</span><span class="n">temp</span><span class="si">}</span><span class="s2"> K, brightness </span><span class="si">{</span><span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;brightness&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">%&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">state</span> <span class="o">=</span> <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">get_state</span><span class="p">()</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">if</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;on&quot;</span><span class="p">):</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">temp</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;color&quot;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;temperature&quot;</span><span class="p">,</span> <span class="mi">4000</span><span class="p">)</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Lamp is on at </span><span class="si">{</span><span class="n">temp</span><span class="si">}</span><span class="s2"> K, brightness </span><span class="si">{</span><span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;brightness&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">%&quot;</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="deviceinfo"><code>DeviceInfo</code><a class="headerlink" href="#deviceinfo" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">DeviceInfo</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">deviceId</span><span class="p">:</span>    <span class="nb">str</span>   <span class="c1"># unique device identifier</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">deviceModel</span><span class="p">:</span> <span class="nb">str</span>   <span class="c1"># hardware model string</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">swVersion</span><span class="p">:</span>   <span class="nb">str</span>   <span class="c1"># firmware version</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">hwVersion</span><span class="p">:</span>   <span class="nb">str</span>   <span class="c1"># hardware revision</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">macAddress</span><span class="p">:</span>  <span class="nb">str</span>   <span class="c1"># MAC address</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">DeviceInfo</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">deviceId</span><span class="p">:</span>    <span class="nb">str</span>   <span class="c1"># unique device identifier</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">deviceModel</span><span class="p">:</span> <span class="nb">str</span>   <span class="c1"># hardware model string</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">swVersion</span><span class="p">:</span>   <span class="nb">str</span>   <span class="c1"># firmware version</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">hwVersion</span><span class="p">:</span>   <span class="nb">str</span>   <span class="c1"># hardware revision</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">macAddress</span><span class="p">:</span>  <span class="nb">str</span>   <span class="c1"># MAC address</span>
 </code></pre></div>
 <p>Returned by <code>DLightDevice.get_info()</code>.</p>
 <p><strong>Example:</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">info</span> <span class="o">=</span> <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">get_info</span><span class="p">()</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Model: </span><span class="si">{</span><span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;deviceModel&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">, FW: </span><span class="si">{</span><span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;swVersion&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">info</span> <span class="o">=</span> <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">get_info</span><span class="p">()</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Model: </span><span class="si">{</span><span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;deviceModel&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">, FW: </span><span class="si">{</span><span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;swVersion&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="commandresult"><code>CommandResult</code><a class="headerlink" href="#commandresult" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">CommandResult</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">status</span><span class="p">:</span>    <span class="nb">str</span>         <span class="c1"># &quot;SUCCESS&quot; or an error code</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">commandId</span><span class="p">:</span> <span class="nb">str</span>         <span class="c1"># echoed command ID (hex string)</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">deviceId</span><span class="p">:</span>  <span class="nb">str</span>         <span class="c1"># echoed device ID</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">states</span><span class="p">:</span>    <span class="n">DeviceState</span> <span class="c1"># current state after the command (if returned)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">CommandResult</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="n">status</span><span class="p">:</span>    <span class="nb">str</span>         <span class="c1"># &quot;SUCCESS&quot; or an error code</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="n">commandId</span><span class="p">:</span> <span class="nb">str</span>         <span class="c1"># echoed command ID (hex string)</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="n">deviceId</span><span class="p">:</span>  <span class="nb">str</span>         <span class="c1"># echoed device ID</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="n">states</span><span class="p">:</span>    <span class="n">DeviceState</span> <span class="c1"># current state after the command (if returned)</span>
 </code></pre></div>
 <p>The raw dict returned by all <code>AsyncDLightClient</code> methods and by the underlying calls in <code>DLightDevice</code>. Most callers do not need to inspect this directly — <code>DLightDevice</code> extracts and caches the relevant fields automatically.</p>
 <p><strong>Example:</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">set_brightness</span><span class="p">(</span><span class="s2">&quot;192.168.1.123&quot;</span><span class="p">,</span> <span class="s2">&quot;DL12345&quot;</span><span class="p">,</span> <span class="mi">50</span><span class="p">)</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">))</span>   <span class="c1"># &quot;SUCCESS&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">set_brightness</span><span class="p">(</span><span class="s2">&quot;192.168.1.123&quot;</span><span class="p">,</span> <span class="s2">&quot;DL12345&quot;</span><span class="p">,</span> <span class="mi">50</span><span class="p">)</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">))</span>   <span class="c1"># &quot;SUCCESS&quot;</span>
 </code></pre></div>
 
 

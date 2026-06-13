@@ -651,6 +651,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#scenes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scenes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#colour-temperature-range" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1245,6 +1256,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#scenes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scenes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#colour-temperature-range" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1453,6 +1475,11 @@
 <td><code>int</code> 2600–6000</td>
 <td>Sets colour temperature in Kelvin.</td>
 </tr>
+<tr>
+<td><code>apply_scene(scene)</code></td>
+<td><code>LightScene</code> or <code>brightness</code> + <code>temperature</code> kwargs</td>
+<td>Applies a preset in one call.</td>
+</tr>
 </tbody>
 </table>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">turn_on</span><span class="p">()</span>
@@ -1460,33 +1487,50 @@
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">set_color_temperature</span><span class="p">(</span><span class="mi">2700</span><span class="p">)</span>  <span class="c1"># warm, candle-like</span>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">toggle</span><span class="p">()</span>                     <span class="c1"># off → on, or on → off</span>
 </code></pre></div>
+<h3 id="scenes">Scenes<a class="headerlink" href="#scenes" title="Permanent link">&para;</a></h3>
+<p><code>apply_scene()</code> sets brightness and colour temperature together in one call, updating the state cache atomically:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">dlightclient</span><span class="w"> </span><span class="kn">import</span> <span class="n">LightScene</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">apply_scene</span><span class="p">(</span><span class="n">LightScene</span><span class="o">.</span><span class="n">READING</span><span class="p">)</span>   <span class="c1"># 70%, 4000 K — comfortable reading light</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">apply_scene</span><span class="p">(</span><span class="n">LightScene</span><span class="o">.</span><span class="n">EVENING</span><span class="p">)</span>   <span class="c1"># 30%, 2700 K — warm, relaxed ambience</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">apply_scene</span><span class="p">(</span><span class="n">LightScene</span><span class="o">.</span><span class="n">DAYLIGHT</span><span class="p">)</span>  <span class="c1"># 100%, 6000 K — crisp daylight simulation</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">apply_scene</span><span class="p">(</span><span class="n">LightScene</span><span class="o">.</span><span class="n">FOCUS</span><span class="p">)</span>     <span class="c1"># 100%, 5000 K — bright, neutral work light</span>
+</code></pre></div>
+<p>You can also define a custom scene inline or save it for reuse:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Inline</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">apply_scene</span><span class="p">(</span><span class="n">brightness</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">temperature</span><span class="o">=</span><span class="mi">3500</span><span class="p">)</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Saved preset</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">MOVIE_NIGHT</span> <span class="o">=</span> <span class="n">LightScene</span><span class="p">(</span><span class="n">brightness</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">temperature</span><span class="o">=</span><span class="mi">2700</span><span class="p">)</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">apply_scene</span><span class="p">(</span><span class="n">MOVIE_NIGHT</span><span class="p">)</span>
+</code></pre></div>
 <h3 id="colour-temperature-range">Colour temperature range<a class="headerlink" href="#colour-temperature-range" title="Permanent link">&para;</a></h3>
 <p><img alt="Colour temperature range 2600 K to 6000 K" src="../../assets/brand/color-temp.svg" /></p>
 <p>The lamp accepts integer Kelvin values between <strong>2600 K</strong> (warm amber) and <strong>6000 K</strong> (cool daylight). Values outside this range raise <code>DLightCommandError</code>.</p>
 <h2 id="reading-state">Reading state<a class="headerlink" href="#reading-state" title="Permanent link">&para;</a></h2>
 <h3 id="get_stateforce_updatefalse"><code>get_state(force_update=False)</code><a class="headerlink" href="#get_stateforce_updatefalse" title="Permanent link">&para;</a></h3>
 <p>Returns a <code>DeviceState</code> dict describing the lamp's current state.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">state</span> <span class="o">=</span> <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">get_state</span><span class="p">()</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="c1"># {&#39;on&#39;: True, &#39;brightness&#39;: 80, &#39;color&#39;: {&#39;temperature&#39;: 2700}}</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># bypass the cache and query the device directly</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">state</span> <span class="o">=</span> <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">get_state</span><span class="p">(</span><span class="n">force_update</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">state</span> <span class="o">=</span> <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">get_state</span><span class="p">()</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1"># {&#39;on&#39;: True, &#39;brightness&#39;: 80, &#39;color&#39;: {&#39;temperature&#39;: 2700}}</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># bypass the cache and query the device directly</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">state</span> <span class="o">=</span> <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">get_state</span><span class="p">(</span><span class="n">force_update</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div>
 <p>By default, <code>get_state()</code> returns the cached value populated by the most recent command. If no command has been sent yet, it queries the device. Pass <code>force_update=True</code> to always query the device.</p>
 <h3 id="get_info"><code>get_info()</code><a class="headerlink" href="#get_info" title="Permanent link">&para;</a></h3>
 <p>Returns a <code>DeviceInfo</code> dict with hardware metadata.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">info</span> <span class="o">=</span> <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">get_info</span><span class="p">()</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># {&#39;deviceId&#39;: &#39;DL12345&#39;, &#39;deviceModel&#39;: &#39;...&#39;, &#39;swVersion&#39;: &#39;...&#39;, &#39;hwVersion&#39;: &#39;...&#39;, &#39;macAddress&#39;: &#39;...&#39;}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">info</span> <span class="o">=</span> <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">get_info</span><span class="p">()</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1"># {&#39;deviceId&#39;: &#39;DL12345&#39;, &#39;deviceModel&#39;: &#39;...&#39;, &#39;swVersion&#39;: &#39;...&#39;, &#39;hwVersion&#39;: &#39;...&#39;, &#39;macAddress&#39;: &#39;...&#39;}</span>
 </code></pre></div>
 <h3 id="pingtimeout20"><code>ping(timeout=2.0)</code><a class="headerlink" href="#pingtimeout20" title="Permanent link">&para;</a></h3>
 <p>A lightweight availability check. Returns <code>True</code> if the device responds, <code>False</code> if it times out or connection is refused. Never raises.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">if</span> <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">ping</span><span class="p">():</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">turn_on</span><span class="p">()</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Device unreachable&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">if</span> <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">ping</span><span class="p">():</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">turn_on</span><span class="p">()</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Device unreachable&quot;</span><span class="p">)</span>
 </code></pre></div>
 <p>Pass a custom <code>timeout</code> to override the client default for this call only:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">alive</span> <span class="o">=</span> <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">ping</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">alive</span> <span class="o">=</span> <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">ping</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
 </code></pre></div>
 <p><code>ping()</code> does not update the state cache and does not fire state-change listeners.</p>
 <h2 id="state-caching-and-optimistic-updates">State caching and optimistic updates<a class="headerlink" href="#state-caching-and-optimistic-updates" title="Permanent link">&para;</a></h2>
@@ -1499,56 +1543,56 @@
 <p>This means <code>get_state()</code> returns immediately after a successful command without a second round-trip, and UI state is consistent even while the command is in flight.</p>
 <h2 id="reacting-to-state-changes">Reacting to state changes<a class="headerlink" href="#reacting-to-state-changes" title="Permanent link">&para;</a></h2>
 <p>Register a callback with <code>on_state_change</code> to be notified whenever the device state changes. Both sync and async callables are supported.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_change</span><span class="p">(</span><span class="n">device</span><span class="p">,</span> <span class="n">old_state</span><span class="p">,</span> <span class="n">new_state</span><span class="p">):</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[</span><span class="si">{</span><span class="n">device</span><span class="o">.</span><span class="n">id</span><span class="si">}</span><span class="s2">] </span><span class="si">{</span><span class="n">old_state</span><span class="si">}</span><span class="s2"> → </span><span class="si">{</span><span class="n">new_state</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">lamp</span><span class="o">.</span><span class="n">on_state_change</span><span class="p">(</span><span class="n">on_change</span><span class="p">)</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">turn_on</span><span class="p">()</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="c1"># [DL12345] {} → {&#39;on&#39;: True}</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">set_brightness</span><span class="p">(</span><span class="mi">60</span><span class="p">)</span>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="c1"># [DL12345] {&#39;on&#39;: True} → {&#39;on&#39;: True, &#39;brightness&#39;: 60}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_change</span><span class="p">(</span><span class="n">device</span><span class="p">,</span> <span class="n">old_state</span><span class="p">,</span> <span class="n">new_state</span><span class="p">):</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[</span><span class="si">{</span><span class="n">device</span><span class="o">.</span><span class="n">id</span><span class="si">}</span><span class="s2">] </span><span class="si">{</span><span class="n">old_state</span><span class="si">}</span><span class="s2"> → </span><span class="si">{</span><span class="n">new_state</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">lamp</span><span class="o">.</span><span class="n">on_state_change</span><span class="p">(</span><span class="n">on_change</span><span class="p">)</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">turn_on</span><span class="p">()</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1"># [DL12345] {} → {&#39;on&#39;: True}</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">set_brightness</span><span class="p">(</span><span class="mi">60</span><span class="p">)</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="c1"># [DL12345] {&#39;on&#39;: True} → {&#39;on&#39;: True, &#39;brightness&#39;: 60}</span>
 </code></pre></div>
 <p>Use an async callback to feed state into another coroutine, for example an <code>asyncio.Queue</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">queue</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Queue</span><span class="p">()</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">on_change</span><span class="p">(</span><span class="n">device</span><span class="p">,</span> <span class="n">old_state</span><span class="p">,</span> <span class="n">new_state</span><span class="p">):</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="k">await</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">new_state</span><span class="p">)</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="n">lamp</span><span class="o">.</span><span class="n">on_state_change</span><span class="p">(</span><span class="n">on_change</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">queue</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Queue</span><span class="p">()</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">on_change</span><span class="p">(</span><span class="n">device</span><span class="p">,</span> <span class="n">old_state</span><span class="p">,</span> <span class="n">new_state</span><span class="p">):</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="k">await</span> <span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">new_state</span><span class="p">)</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="n">lamp</span><span class="o">.</span><span class="n">on_state_change</span><span class="p">(</span><span class="n">on_change</span><span class="p">)</span>
 </code></pre></div>
 <p>To stop receiving events, pass the same callable to <code>remove_state_listener</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">lamp</span><span class="o">.</span><span class="n">remove_state_listener</span><span class="p">(</span><span class="n">on_change</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">lamp</span><span class="o">.</span><span class="n">remove_state_listener</span><span class="p">(</span><span class="n">on_change</span><span class="p">)</span>
 </code></pre></div>
 <p><strong>Exceptions in callbacks are caught and logged</strong> — they never interrupt the command that triggered the change.</p>
 <div class="admonition warning">
 <p class="admonition-title">Physical button presses are not detected</p>
 <p>Callbacks only fire for changes made <strong>through this client instance</strong>. If someone physically presses the button on the lamp, or another app sends a command, the library cannot detect it automatically. To pick up external changes, call <code>get_state(force_update=True)</code> and the callback will fire if the device reports a different state than the cache:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Poll every 10 s to catch external changes</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">get_state</span><span class="p">(</span><span class="n">force_update</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Poll every 10 s to catch external changes</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>    <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">get_state</span><span class="p">(</span><span class="n">force_update</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
 </code></pre></div>
 <p>A dedicated <code>watch()</code> helper that automates this is planned.</p>
 </div>
 <h2 id="flash-sequence">Flash sequence<a class="headerlink" href="#flash-sequence" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">success</span> <span class="o">=</span> <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">flash</span><span class="p">(</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>    <span class="n">flashes</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>        <span class="c1"># number of on/off cycles</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="n">on_duration</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span>  <span class="c1"># seconds lamp stays on each flash</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">off_duration</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="c1"># seconds lamp stays off each flash</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">success</span> <span class="o">=</span> <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">flash</span><span class="p">(</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>    <span class="n">flashes</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>        <span class="c1"># number of on/off cycles</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>    <span class="n">on_duration</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span>  <span class="c1"># seconds lamp stays on each flash</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>    <span class="n">off_duration</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="c1"># seconds lamp stays off each flash</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="p">)</span>
 </code></pre></div>
 <p><code>flash()</code> saves the current state (power, brightness, colour temperature), performs the flash sequence, then restores the saved state. Returns <code>True</code> if the full sequence completed, <code>False</code> if any step failed (state is still restored on failure).</p>
 <h2 id="wi-fi-provisioning">Wi-Fi provisioning<a class="headerlink" href="#wi-fi-provisioning" title="Permanent link">&para;</a></h2>
 <p>For a lamp in SoftAP (factory reset) mode at <code>192.168.4.1</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">connect_to_wifi</span><span class="p">(</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>    <span class="n">device_id</span><span class="o">=</span><span class="s2">&quot;DL12345&quot;</span><span class="p">,</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>    <span class="n">ssid</span><span class="o">=</span><span class="s2">&quot;MyNetwork&quot;</span><span class="p">,</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="n">password</span><span class="o">=</span><span class="s2">&quot;s3cret&quot;</span><span class="p">,</span>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>    <span class="c1"># target_ip defaults to &quot;192.168.4.1&quot;</span>
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>    <span class="c1"># port defaults to 3333</span>
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">connect_to_wifi</span><span class="p">(</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>    <span class="n">device_id</span><span class="o">=</span><span class="s2">&quot;DL12345&quot;</span><span class="p">,</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>    <span class="n">ssid</span><span class="o">=</span><span class="s2">&quot;MyNetwork&quot;</span><span class="p">,</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>    <span class="n">password</span><span class="o">=</span><span class="s2">&quot;s3cret&quot;</span><span class="p">,</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="c1"># target_ip defaults to &quot;192.168.4.1&quot;</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="c1"># port defaults to 3333</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="p">)</span>
 </code></pre></div>
 <p>This is handled directly on <code>AsyncDLightClient</code>, not <code>DLightDevice</code>, because the lamp is not yet on your home network when provisioning.</p>
 
