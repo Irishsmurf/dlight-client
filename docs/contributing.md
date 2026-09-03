@@ -60,13 +60,12 @@ tests/
   test_frame.py      Codec tests
   test_cli.py        CLI tests
   test_retry.py      Retry logic tests
-  test_pool_regressions.py  Concurrency invariants (do not weaken)
+  test_pool_regressions.py  Pool invariants: concurrency + delivery (do not weaken)
 
 tools/
   fake_dlight_server.py  Standalone test server (run separately)
 
 docs/                MkDocs source
-issues/              Roadmap feature specifications
 ```
 
 ---
@@ -80,7 +79,7 @@ The test suite uses `FakeDLightServer` (`tests/fake_server.py`) — a real `asyn
 - Do not mock `asyncio` streams directly. Use `FakeDLightServer` instead — it tests the actual wire codec and connection lifecycle.
 - Assert observable behaviour (connection count, bytes on the wire, return values), not internal call sequences.
 - Every new behaviour needs a new test. Every bug fix needs a regression test.
-- `tests/test_pool_regressions.py` encodes the pool's concurrency invariants. If your change causes these to fail, fix the implementation — do not adjust the tests to pass.
+- `tests/test_pool_regressions.py` encodes the pool's permanent invariants: concurrency, and the delivery contract that the pool never re-sends a command (ADR 0001). If your change causes these to fail, fix the implementation — do not adjust the tests to pass.
 
 To run the standalone server for manual testing:
 

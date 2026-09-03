@@ -22,8 +22,8 @@ AsyncDLightClient(
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `default_timeout` | `float` | `5.0` | Seconds before a connect or read is abandoned. |
-| `persistent` | `bool` | `False` | When `True`, connections are kept in a pool and reused. |
-| `max_retries` | `int` | `0` | Number of retry attempts on transient errors (0 = no retries). |
+| `persistent` | `bool` | `False` | When `True`, connections are kept in a pool and reused. A pooled connection is checked for a departed peer before reuse; the pool never re-sends a command. |
+| `max_retries` | `int` | `0` | Number of retry attempts on transient errors (0 = no retries). This is the **only** retry counter: `max_retries=2` means the device receives a command at most three times. |
 | `retry_backoff` | `float` | `0.5` | Base backoff in seconds. Each retry doubles: `backoff * 2^attempt`. |
 | `idle_timeout` | `float` | `60.0` | Seconds of inactivity before a pooled connection is evicted. `0` disables idle eviction. |
 | `ssl` | `bool \| SSLContext \| None` | `None` | `True` for system CA trust, a custom `SSLContext`, or `None`/`False` for plain TCP. |
@@ -38,6 +38,11 @@ client.persistent = False  # disable and flush the pool
 ```
 
 Setting `persistent` to `False` on a live client closes all pooled connections immediately.
+
+!!! warning "Changed in 2.1.0"
+    The pool no longer re-sends a failed command on a fresh connection. It checks a pooled connection for a departed peer before handing it out, so most stale connections are replaced before anything is written — but a failure that survives that check is now raised to you rather than silently retried. With `persistent=True` and the default `max_retries=0` this surfaces as a `DLightConnectionError` where earlier versions recovered. Set `max_retries=1` to restore the old effective behaviour.
+
+    Rationale: [ADR 0001](../adr/0001-no-byte-replay-in-the-connection-pool.md).
 
 ### `idle_timeout`
 

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`ConnectionPool` no longer re-sends commands.** Transparent reconnection (added in 2.0.0) buffered a
+  command's bytes and replayed them on a fresh connection when a reused connection failed. Because
+  `AsyncDLightClient` also retries, the two layers multiplied: a client configured with `max_retries=2`
+  was measured delivering one `EXECUTE` to the device **four** times, against a documented bound of
+  three. The pool now checks a pooled connection for a departed peer before handing it out, and any
+  failure that survives that check is raised to the caller.
+
+  Most stale connections are caught before a command is written, so this is invisible in normal use.
+  Where it is not: `persistent=True` with the default `max_retries=0` now surfaces a connection error
+  where it previously recovered silently. Set `max_retries=1` to restore the old effective behaviour —
+  now an explicit choice, with an exact bound. `max_retries` is the only retry counter, so
+  `max_retries=2` means the device receives a command at most three times.
+
+  Rationale and rejected alternatives: `docs/adr/0001-no-byte-replay-in-the-connection-pool.md`.
+
+### Removed
+- `ReconnectingState`, `ReconnectingStreamReader` and `ReconnectingStreamWriter` from the private
+  `dlightclient._pool` module. These were internal; no public interface changes.
+
 ## [2.0.0] — 2026-06-13
 
 ### Added
