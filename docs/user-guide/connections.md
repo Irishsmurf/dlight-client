@@ -19,8 +19,15 @@ client = AsyncDLightClient(persistent=True)   # connections stay open
 The pool provides these guarantees:
 
 - **Per-device locking.** Each `(host, port, ssl)` key has its own `asyncio.Lock`. Concurrent tasks sharing a client will queue up per device, not per client — so two lamps can be commanded in parallel while requests to the same lamp serialise.
-- **Eviction on failure.** Any exception during a send or receive evicts the connection immediately. If the connection was a reused persistent connection that went stale, the pool automatically discards it, opens a fresh connection, and transparently retries the failed command once. If the retry also fails or the connection was already brand new, the error is raised to the caller.
+- **Eviction on failure.** Any exception during a send or receive evicts the connection immediately. The error is then raised to the caller.
+- **Liveness checked before reuse.** Before a pooled connection is handed out it is checked for a departed peer — one that closed the connection cleanly, or reset it, while it sat idle. Such a connection is discarded and replaced transparently, without the caller noticing.
+- **Commands are never re-sent by the pool.** If a failure survives the liveness check, it is raised to the caller. The pool does not re-send the command on a fresh connection, because only the caller can know whether re-sending is safe. See [Retries](#retries) below to opt into recovery.
 - **Idle eviction.** Connections unused for longer than `idle_timeout` (default 60 s) are closed and removed from the pool.
+
+!!! warning "Changed in 2.1.0"
+    Earlier versions re-sent the failed command once on a new connection when a reused connection failed. Because the client also retries, the two layers multiplied: a client with `max_retries=2` could deliver one command to the lamp **four** times. The pool no longer re-sends anything.
+
+    Most stale connections are now caught before a command is written, so this is invisible. For the rest, `persistent=True` with the default `max_retries=0` surfaces an error where it previously recovered silently — set `max_retries=1` to restore the old effective behaviour, this time as your choice and with a bound you can predict.
 
 ## The context manager
 
@@ -65,6 +72,11 @@ client = AsyncDLightClient(
 Retries fire on `DLightTimeoutError` and `DLightConnectionError` only. They never fire on `DLightCommandError` or `DLightResponseError` — those indicate a protocol-level problem that won't resolve by retrying.
 
 Each retry gets a **fresh TCP connection**, even in persistent mode. A stale or broken connection is not re-used.
+
+`max_retries` is the **only** retry counter, so the attempt count above is exact: `max_retries=2` means the lamp receives the command at most three times. Nothing below this layer re-sends it.
+
+!!! danger "Retries and non-idempotent commands"
+    A retry re-sends a command that may already have reached the lamp — the protocol has no way to confirm delivery. For `EXECUTE` commands this is usually harmless because they set absolute values (`brightness=40` twice leaves the lamp at 40). Raise `max_retries` deliberately, not by default.
 
 ## TLS
 

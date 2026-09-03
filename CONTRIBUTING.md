@@ -29,11 +29,10 @@ All tests use an in-process fake dLight server — no physical hardware needed.
 dlightclient/            Main package (see docs/architecture.md for layers)
 tests/
   fake_server.py         Real asyncio server for testing — use this, not mocks
-  test_pool_regressions.py  Concurrency invariants — do not weaken
+  test_pool_regressions.py  Pool invariants: concurrency + delivery — do not weaken
 tools/
   fake_dlight_server.py  Standalone test server for manual experiments
 docs/                    MkDocs source
-issues/                  Roadmap feature specifications
 ```
 
 ## Testing
@@ -41,7 +40,7 @@ issues/                  Roadmap feature specifications
 - Use `FakeDLightServer` (`tests/fake_server.py`) — a real asyncio TCP server speaking the actual protocol. Do not mock asyncio streams.
 - Assert observable behaviour (connection counts, return values), not internal call sequences.
 - New behaviour = new test. Bug fix = regression test.
-- `tests/test_pool_regressions.py` encodes pool concurrency invariants. If your change breaks them, fix the implementation.
+- `tests/test_pool_regressions.py` encodes the pool's permanent invariants: concurrency, and the delivery contract that the pool never re-sends a command (ADR 0001). If your change breaks them, fix the implementation.
 
 ```bash
 python -m pytest tests/
