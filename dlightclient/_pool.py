@@ -108,7 +108,8 @@ class ConnectionPool:
 
         try:
             probe.setblocking(False)
-            return probe.recv(1, socket.MSG_PEEK) != b""
+            peeked: bytes = probe.recv(1, socket.MSG_PEEK)
+            return peeked != b""
         except (BlockingIOError, InterruptedError):
             return True  # nothing pending: open and idle
         except OSError:
