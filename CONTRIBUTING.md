@@ -31,7 +31,7 @@ tests/
   fake_server.py         Real asyncio server for testing — use this, not mocks
   test_pool_regressions.py  Pool invariants: concurrency + delivery — do not weaken
 tools/
-  fake_dlight_server.py  Standalone test server for manual experiments
+  fake_dlight_server.py  Standalone test server (needs `pip install -e .`)
 docs/                    MkDocs source
 ```
 

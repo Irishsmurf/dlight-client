@@ -7,17 +7,19 @@ counts) rather than on the client's internal read/write call sequence.
 """
 
 import asyncio
-import json
 import socket
 import struct
 from collections import deque
 from typing import Any, Dict, List, Optional
 
+from dlightclient._frame import decode_command, encode_response
 
-def frame(payload_dict: Dict[str, Any]) -> bytes:
-    """Encodes a dict into the dLight response format (4-byte BE length + JSON)."""
-    payload = json.dumps(payload_dict).encode("utf-8")
-    return struct.pack(">I", len(payload)) + payload
+# The wire format is defined once, in the library's codec. This fake speaks the
+# same bytes the client does rather than re-implementing them, so the two
+# cannot drift apart. tests/test_frame.py pins the format itself against
+# hand-written byte literals, so sharing the codec here cannot hide a framing
+# bug behind mutual agreement.
+frame = encode_response
 
 
 class FakeDLightServer:
@@ -145,20 +147,10 @@ class FakeDLightServer:
     @staticmethod
     async def _read_command(reader: asyncio.StreamReader, buf: bytearray) -> Optional[Dict[str, Any]]:
         """Reads one JSON command (the client sends bare JSON, no length prefix)."""
-        decoder = json.JSONDecoder()
         while True:
-            if buf:
-                try:
-                    text = bytes(buf).decode("utf-8")
-                except UnicodeDecodeError:
-                    text = None  # partial multibyte sequence; need more data
-                if text is not None:
-                    try:
-                        obj, end = decoder.raw_decode(text)
-                        del buf[: len(text[:end].encode("utf-8"))]
-                        return obj
-                    except json.JSONDecodeError:
-                        pass  # incomplete JSON; need more data
+            command = decode_command(buf)
+            if command is not None:
+                return command
             chunk = await reader.read(4096)
             if not chunk:
                 return None

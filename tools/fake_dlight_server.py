@@ -24,8 +24,10 @@ to it as if it were a physical lamp:
   `hang`/`reset`/`drop` take an optional count (apply to the next N commands,
   then revert to normal); without one they persist until `normal`.
 
-Stdlib only — run it directly:
+Requires the package to be importable, so that the wire format and the port
+numbers come from the library rather than being restated here:
 
+    pip install -e ".[dev]"
     python tools/fake_dlight_server.py --device-id fake-dlight-1 -v
 """
 
@@ -39,11 +41,21 @@ import struct
 import sys
 from typing import Any, Dict, Optional, Tuple
 
-DEFAULT_TCP_PORT = 3333
+from dlightclient._frame import decode_command, encode_response
+from dlightclient.constants import (
+    DEFAULT_TCP_PORT,
+    DEFAULT_UDP_DISCOVERY_PORT,
+    DEFAULT_UDP_RESPONSE_PORT,
+    UDP_DISCOVERY_PAYLOAD_HEX,
+)
+
+# Ports and the probe payload come from the library, so this fake cannot drift
+# from the client it exists to test. Only the control port is its own, since
+# real devices have no such thing.
 DEFAULT_CONTROL_PORT = 3334
-DISCOVERY_PORT = 9478
-DISCOVERY_RESPONSE_PORT = 9487
-DISCOVERY_PROBE = binascii.unhexlify("476f6f676c654e50455f457269635f5761796e65")
+DISCOVERY_PORT = DEFAULT_UDP_DISCOVERY_PORT
+DISCOVERY_RESPONSE_PORT = DEFAULT_UDP_RESPONSE_PORT
+DISCOVERY_PROBE = binascii.unhexlify(UDP_DISCOVERY_PAYLOAD_HEX)
 
 _LOGGER = logging.getLogger("fake_dlight")
 
@@ -105,10 +117,11 @@ class FakeDLight:
 
     def handle_command(self, command: Dict[str, Any]) -> Dict[str, Any]:
         command_type = command.get("commandType")
+        # Real devices do not echo commandId back reliably enough to correlate
+        # a response with its request, so this fake must not either -- doing so
+        # would model a more capable device than exists and let code that
+        # depends on correlation pass here and fail against hardware.
         response: Dict[str, Any] = {"status": "SUCCESS"}
-        command_id = command.get("commandId")
-        if command_id is not None:
-            response["commandId"] = command_id
 
         if command_type == "QUERY_DEVICE_INFO":
             response.update(self.info)
@@ -163,23 +176,20 @@ async def _handle_tcp(
     peer = writer.get_extra_info("peername")
     _LOGGER.info("Connection from %s", peer)
     buf = bytearray()
-    decoder = json.JSONDecoder()
     try:
         while True:
             # Commands arrive as bare JSON with no length prefix; decode
             # incrementally so back-to-back commands on one connection work.
             command = None
             while command is None:
-                try:
-                    text = bytes(buf).decode("utf-8")
-                    command, end = decoder.raw_decode(text)
-                    del buf[: len(text[:end].encode("utf-8"))]
-                except (UnicodeDecodeError, json.JSONDecodeError):
-                    chunk = await reader.read(4096)
-                    if not chunk:
-                        _LOGGER.info("Connection from %s closed", peer)
-                        return
-                    buf.extend(chunk)
+                command = decode_command(buf)
+                if command is not None:
+                    break
+                chunk = await reader.read(4096)
+                if not chunk:
+                    _LOGGER.info("Connection from %s closed", peer)
+                    return
+                buf.extend(chunk)
 
             _LOGGER.info("<- %s", json.dumps(command))
 
@@ -206,8 +216,7 @@ async def _handle_tcp(
 
             response = device.handle_command(command)
             _LOGGER.info("-> %s", json.dumps(response))
-            payload = json.dumps(response).encode("utf-8")
-            writer.write(struct.pack(">I", len(payload)) + payload)
+            writer.write(encode_response(response))
             await writer.drain()
     except (ConnectionResetError, BrokenPipeError, asyncio.CancelledError):
         pass
