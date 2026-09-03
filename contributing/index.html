@@ -1463,8 +1463,12 @@
 <li><code>tests/test_pool_regressions.py</code> encodes the pool's permanent invariants: concurrency, and the delivery contract that the pool never re-sends a command (ADR 0001). If your change causes these to fail, fix the implementation — do not adjust the tests to pass.</li>
 </ul>
 <p>To run the standalone server for manual testing:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python<span class="w"> </span>tools/fake_dlight_server.py
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[dev]"</span><span class="w">          </span><span class="c1"># the tool imports dlightclient</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>python<span class="w"> </span>tools/fake_dlight_server.py
 </code></pre></div>
+<p>It imports the library's wire codec and port constants rather than restating
+them, so it cannot drift from the client it exists to test — which means it
+needs the package importable, not just a copy of the file.</p>
 <hr />
 <h2 id="code-style">Code style<a class="headerlink" href="#code-style" title="Permanent link">&para;</a></h2>
 <ul>
