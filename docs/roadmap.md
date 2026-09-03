@@ -1,6 +1,6 @@
 # Roadmap
 
-This page tracks planned and completed enhancements. Detailed specifications for each item live in the `issues/` directory of the repository.
+This page tracks planned and completed enhancements. Detailed specifications for each item live in the project's [GitHub issues](https://github.com/Irishsmurf/dlight-client/issues).
 
 !!! info "Want to contribute?"
     If you'd like to work on a planned item, open a GitHub Issue to discuss your approach before writing code. See [Contributing](contributing.md) for setup instructions.

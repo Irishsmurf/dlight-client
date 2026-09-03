@@ -14,4 +14,4 @@ This document outlines the planned enhancements and future direction for the `dl
 - **[DL-005] State Caching and Optimistic Updates**: Improve responsiveness by maintaining a local state cache in `DLightDevice`.
 
 ---
-*For detailed specifications of each feature, please refer to the corresponding tracking issues in the `issues/` directory.*
+*For detailed specifications of each feature, please refer to the corresponding [GitHub issues](https://github.com/Irishsmurf/dlight-client/issues).*

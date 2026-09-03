@@ -12,3 +12,20 @@ to the documentation in `docs/`.** At minimum update:
 
 Docs are built with MkDocs Material (`mkdocs build --strict`). Run a build to
 confirm there are no broken references before committing.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as GitHub issues in `Irishsmurf/dlight-client`, managed with the
+`gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage labels are used as-is. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `docs/adr/` at the repo root (created lazily;
+neither exists yet). See `docs/agents/domain.md`.
