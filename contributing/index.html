@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://irishsmurf.github.io/dlight-client/contributing/">
       
       
-        <link rel="prev" href="../architecture/">
+        <link rel="prev" href="../adr/0001-no-byte-replay-in-the-connection-pool/">
       
       
         <link rel="next" href="../changelog/">
@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../assets/brand/icon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -316,6 +316,26 @@
 
       </a>
     </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../adr/0001-no-byte-replay-in-the-connection-pool/" class="md-tabs__link">
+          
+  
+  
+  Decision Records
+
+        </a>
+      </li>
+    
   
 
       
@@ -933,6 +953,100 @@
       
   
   
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decision Records
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Decision Records
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0001-no-byte-replay-in-the-connection-pool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0001 — No byte replay in the connection pool
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--accepted"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
     
   
   
@@ -1331,13 +1445,12 @@
 <a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>  test_frame.py      Codec tests
 <a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>  test_cli.py        CLI tests
 <a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>  test_retry.py      Retry logic tests
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>  test_pool_regressions.py  Concurrency invariants (do not weaken)
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>  test_pool_regressions.py  Pool invariants: concurrency + delivery (do not weaken)
 <a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>
 <a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>tools/
 <a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>  fake_dlight_server.py  Standalone test server (run separately)
 <a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>
 <a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>docs/                MkDocs source
-<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a>issues/              Roadmap feature specifications
 </code></pre></div>
 <hr />
 <h2 id="testing-philosophy">Testing philosophy<a class="headerlink" href="#testing-philosophy" title="Permanent link">&para;</a></h2>
@@ -1347,7 +1460,7 @@
 <li>Do not mock <code>asyncio</code> streams directly. Use <code>FakeDLightServer</code> instead — it tests the actual wire codec and connection lifecycle.</li>
 <li>Assert observable behaviour (connection count, bytes on the wire, return values), not internal call sequences.</li>
 <li>Every new behaviour needs a new test. Every bug fix needs a regression test.</li>
-<li><code>tests/test_pool_regressions.py</code> encodes the pool's concurrency invariants. If your change causes these to fail, fix the implementation — do not adjust the tests to pass.</li>
+<li><code>tests/test_pool_regressions.py</code> encodes the pool's permanent invariants: concurrency, and the delivery contract that the pool never re-sends a command (ADR 0001). If your change causes these to fail, fix the implementation — do not adjust the tests to pass.</li>
 </ul>
 <p>To run the standalone server for manual testing:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python<span class="w"> </span>tools/fake_dlight_server.py
@@ -1425,7 +1538,7 @@
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../architecture/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Architecture">
+          <a href="../adr/0001-no-byte-replay-in-the-connection-pool/" class="md-footer__link md-footer__link--prev" aria-label="Previous: ADR 0001 — No byte replay in the connection pool">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1435,7 +1548,7 @@
                 Previous
               </span>
               <div class="md-ellipsis">
-                Architecture
+                ADR 0001 — No byte replay in the connection pool
               </div>
             </div>
           </a>
@@ -1514,7 +1627,7 @@
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.tabs", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "content.action.edit", "search.suggest", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/brand/icon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -318,6 +318,26 @@
 
       </a>
     </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../adr/0001-no-byte-replay-in-the-connection-pool/" class="md-tabs__link">
+          
+  
+  
+  Decision Records
+
+        </a>
+      </li>
+    
   
 
       
@@ -1075,6 +1095,100 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decision Records
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Decision Records
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../adr/0001-no-byte-replay-in-the-connection-pool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0001 — No byte replay in the connection pool
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--accepted"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href="../../contributing/" class="md-nav__link">
         
@@ -1301,13 +1415,20 @@
 <p>The pool provides these guarantees:</p>
 <ul>
 <li><strong>Per-device locking.</strong> Each <code>(host, port, ssl)</code> key has its own <code>asyncio.Lock</code>. Concurrent tasks sharing a client will queue up per device, not per client — so two lamps can be commanded in parallel while requests to the same lamp serialise.</li>
-<li><strong>Eviction on failure.</strong> Any exception during a send or receive evicts the connection immediately. If the connection was a reused persistent connection that went stale, the pool automatically discards it, opens a fresh connection, and transparently retries the failed command once. If the retry also fails or the connection was already brand new, the error is raised to the caller.</li>
+<li><strong>Eviction on failure.</strong> Any exception during a send or receive evicts the connection immediately. The error is then raised to the caller.</li>
+<li><strong>Liveness checked before reuse.</strong> Before a pooled connection is handed out it is checked for a departed peer — one that closed the connection cleanly, or reset it, while it sat idle. Such a connection is discarded and replaced transparently, without the caller noticing.</li>
+<li><strong>Commands are never re-sent by the pool.</strong> If a failure survives the liveness check, it is raised to the caller. The pool does not re-send the command on a fresh connection, because only the caller can know whether re-sending is safe. See <a href="#retries">Retries</a> below to opt into recovery.</li>
 <li><strong>Idle eviction.</strong> Connections unused for longer than <code>idle_timeout</code> (default 60 s) are closed and removed from the pool.</li>
 </ul>
+<div class="admonition warning">
+<p class="admonition-title">Changed in 2.1.0</p>
+<p>Earlier versions re-sent the failed command once on a new connection when a reused connection failed. Because the client also retries, the two layers multiplied: a client with <code>max_retries=2</code> could deliver one command to the lamp <strong>four</strong> times. The pool no longer re-sends anything.</p>
+<p>Most stale connections are now caught before a command is written, so this is invisible. For the rest, <code>persistent=True</code> with the default <code>max_retries=0</code> surfaces an error where it previously recovered silently — set <code>max_retries=1</code> to restore the old effective behaviour, this time as your choice and with a bound you can predict.</p>
+</div>
 <h2 id="the-context-manager">The context manager<a class="headerlink" href="#the-context-manager" title="Permanent link">&para;</a></h2>
 <p>The <code>async with</code> pattern is the recommended lifecycle for persistent connections:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">async</span> <span class="k">with</span> <span class="n">AsyncDLightClient</span><span class="p">(</span><span class="n">persistent</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">lamp</span> <span class="o">=</span> <span class="n">DLightDevice</span><span class="p">(</span><span class="s2">&quot;192.168.1.123&quot;</span><span class="p">,</span> <span class="s2">&quot;DL12345&quot;</span><span class="p">,</span> <span class="n">client</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">lamp</span> <span class="o">=</span> <span class="n">DLightDevice</span><span class="p">(</span><span class="s2">"192.168.1.123"</span><span class="p">,</span> <span class="s2">"DL12345"</span><span class="p">,</span> <span class="n">client</span><span class="p">)</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">turn_on</span><span class="p">()</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="k">await</span> <span class="n">lamp</span><span class="o">.</span><span class="n">set_brightness</span><span class="p">(</span><span class="mi">50</span><span class="p">)</span>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1"># pool flushed; all TCP connections closed</span>
@@ -1334,13 +1455,18 @@
 </code></pre></div>
 <p>Retries fire on <code>DLightTimeoutError</code> and <code>DLightConnectionError</code> only. They never fire on <code>DLightCommandError</code> or <code>DLightResponseError</code> — those indicate a protocol-level problem that won't resolve by retrying.</p>
 <p>Each retry gets a <strong>fresh TCP connection</strong>, even in persistent mode. A stale or broken connection is not re-used.</p>
+<p><code>max_retries</code> is the <strong>only</strong> retry counter, so the attempt count above is exact: <code>max_retries=2</code> means the lamp receives the command at most three times. Nothing below this layer re-sends it.</p>
+<div class="admonition danger">
+<p class="admonition-title">Retries and non-idempotent commands</p>
+<p>A retry re-sends a command that may already have reached the lamp — the protocol has no way to confirm delivery. For <code>EXECUTE</code> commands this is usually harmless because they set absolute values (<code>brightness=40</code> twice leaves the lamp at 40). Raise <code>max_retries</code> deliberately, not by default.</p>
+</div>
 <h2 id="tls">TLS<a class="headerlink" href="#tls" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Trust the server via the system CA store</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">client</span> <span class="o">=</span> <span class="n">AsyncDLightClient</span><span class="p">(</span><span class="n">ssl</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># Provide a custom context (self-signed certs, mutual TLS, etc.)</span>
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="kn">import</span><span class="w"> </span><span class="nn">ssl</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="n">ctx</span> <span class="o">=</span> <span class="n">ssl</span><span class="o">.</span><span class="n">create_default_context</span><span class="p">(</span><span class="n">cafile</span><span class="o">=</span><span class="s2">&quot;/path/to/ca.pem&quot;</span><span class="p">)</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="n">ctx</span> <span class="o">=</span> <span class="n">ssl</span><span class="o">.</span><span class="n">create_default_context</span><span class="p">(</span><span class="n">cafile</span><span class="o">=</span><span class="s2">"/path/to/ca.pem"</span><span class="p">)</span>
 <a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="n">client</span> <span class="o">=</span> <span class="n">AsyncDLightClient</span><span class="p">(</span><span class="n">ssl</span><span class="o">=</span><span class="n">ctx</span><span class="p">)</span>
 <a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>
 <a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="c1"># Disable certificate verification (development / testing only)</span>
@@ -1352,8 +1478,8 @@
 <h2 id="concurrency">Concurrency<a class="headerlink" href="#concurrency" title="Permanent link">&para;</a></h2>
 <p>One <code>AsyncDLightClient</code> instance is safe to share across multiple coroutines and multiple <code>DLightDevice</code> objects. The per-device lock in the pool ensures that concurrent commands to the <strong>same</strong> lamp are serialised while commands to <strong>different</strong> lamps proceed in parallel:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">async</span> <span class="k">with</span> <span class="n">AsyncDLightClient</span><span class="p">(</span><span class="n">persistent</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">lamp_a</span> <span class="o">=</span> <span class="n">DLightDevice</span><span class="p">(</span><span class="s2">&quot;192.168.1.10&quot;</span><span class="p">,</span> <span class="s2">&quot;DLA&quot;</span><span class="p">,</span> <span class="n">client</span><span class="p">)</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">lamp_b</span> <span class="o">=</span> <span class="n">DLightDevice</span><span class="p">(</span><span class="s2">&quot;192.168.1.11&quot;</span><span class="p">,</span> <span class="s2">&quot;DLB&quot;</span><span class="p">,</span> <span class="n">client</span><span class="p">)</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">lamp_a</span> <span class="o">=</span> <span class="n">DLightDevice</span><span class="p">(</span><span class="s2">"192.168.1.10"</span><span class="p">,</span> <span class="s2">"DLA"</span><span class="p">,</span> <span class="n">client</span><span class="p">)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">lamp_b</span> <span class="o">=</span> <span class="n">DLightDevice</span><span class="p">(</span><span class="s2">"192.168.1.11"</span><span class="p">,</span> <span class="s2">"DLB"</span><span class="p">,</span> <span class="n">client</span><span class="p">)</span>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
 <a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="c1"># These run concurrently — different devices, different pool slots</span>
 <a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span>
@@ -1516,7 +1642,7 @@
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.tabs", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "content.action.edit", "search.suggest", "search.highlight", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

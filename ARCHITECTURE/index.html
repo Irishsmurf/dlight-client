@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../assets/brand/icon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -29,7 +29,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -312,6 +312,26 @@
 
       </a>
     </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../adr/0001-no-byte-replay-in-the-connection-pool/" class="md-tabs__link">
+          
+  
+  
+  Decision Records
+
+        </a>
+      </li>
+    
   
 
       
@@ -929,6 +949,100 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decision Records
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Decision Records
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0001-no-byte-replay-in-the-connection-pool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0001 — No byte replay in the connection pool
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--accepted"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href="../contributing/" class="md-nav__link">
         
@@ -1272,7 +1386,7 @@
 <li><strong>Two connection modes.</strong> <code>persistent=False</code> (default): dial → exchange → close, per command. <code>persistent=True</code>: after a clean exchange the connection is returned to the pool under its <code>(host, port, ssl)</code> key and reused until <code>idle_timeout</code> (default 60 s) elapses or the peer closes it. <code>client.close()</code> / <code>async with client:</code> tears down the pool.</li>
 <li><strong>Retry policy lives in one loop.</strong> Only <code>DLightTimeoutError</code> and <code>DLightConnectionError</code> are retryable (transient network conditions); backoff is exponential (<code>retry_backoff · 2^attempt</code>), default <code>max_retries=0</code>. Protocol-level failures (<code>DLightResponseError</code>, non-<code>SUCCESS</code> status) are <strong>never</strong> retried — re-sending a command the device rejected or garbled is unsafe for stateful hardware.</li>
 <li><strong>Eviction is unconditional on failure.</strong> The pool's context manager closes and discards a connection if the exchange body raises <em>any</em> exception — including timeouts. This is a deliberate invariant: a stream that failed mid-exchange may have a late response still in flight, and reusing it would desynchronize every subsequent request/response pairing on that socket (the device does not echo <code>commandId</code> reliably enough to re-correlate). The cost — an occasional unnecessary reconnect after a benign error — is accepted in exchange for making desync structurally impossible.</li>
-<li><strong>Transparent reconnection on stale connections.</strong> If a connection error occurs on a reused (not freshly opened) persistent connection, the pool transparently discards it, establishes a new connection, and retries the failed operation once. Only if the retry also fails does the error propagate to the caller. Failure on a brand-new connection is never retried.</li>
+<li><strong>Liveness is checked before reuse; bytes are never replayed.</strong> A pooled connection is checked for a departed peer before being handed out. Two stream flags (<code>at_eof()</code> for a clean close, <code>is_closing()</code> for a reset) catch departures the event loop has already processed; because a pooled connection is one nothing has read from recently, a third check asks the kernel directly via <code>MSG_PEEK</code> on a duplicated non-blocking descriptor, which sees a departure the loop has not yet noticed. A failure surviving all three propagates to the caller. The pool never re-sends a command: whether a re-send is safe is a property of the command, which only the client knows. See <code>docs/adr/0001-no-byte-replay-in-the-connection-pool.md</code>.</li>
 <li><strong>Disconnections</strong> surface as three distinct codec/pool errors so callers can react differently: connection refused/unreachable (<code>DLightConnectionError</code>), dead air (<code>DLightTimeoutError</code>), and mid-frame peer close (<code>DLightResponseError</code>, since a half-frame implies a protocol-level fault, not just a network blip).</li>
 </ul>
 <hr />
@@ -1301,7 +1415,7 @@
 <h3 id="provisioning-path">Provisioning path<a class="headerlink" href="#provisioning-path" title="Permanent link">&para;</a></h3>
 <p>A factory-reset lamp runs a SoftAP at the fixed address <strong>192.168.4.1</strong>. <code>connect_to_wifi()</code> targets that IP by default with an <code>SSID_CONNECT</code> command carrying Wi-Fi credentials; the device then joins the real network and becomes discoverable via the UDP channel. This is the same TCP protocol, just a different default endpoint — no separate provisioning stack.</p>
 <hr />
-<p><strong>Where to start contributing:</strong> the seams are <code>_async_send_tcp_command</code> (client ↔ transport), <code>pool.connection()</code> (lifecycle policy), and <code>read_response()</code> (wire semantics). Roadmap items DL-002/004/005 (<code>issues/</code>) extend the CLI, add mDNS discovery alongside the UDP probe, and deepen <code>DLightDevice</code> state caching — all of which sit <em>above</em> the transport seam and shouldn't need to touch <code>_pool</code>/<code>_frame</code>.</p>
+<p><strong>Where to start contributing:</strong> the seams are <code>_async_send_tcp_command</code> (client ↔ transport), <code>pool.connection()</code> (lifecycle policy), and <code>read_response()</code> (wire semantics). Roadmap items DL-002/004/005 (<a href="https://github.com/Irishsmurf/dlight-client/issues">GitHub issues</a>) extend the CLI, add mDNS discovery alongside the UDP probe, and deepen <code>DLightDevice</code> state caching — all of which sit <em>above</em> the transport seam and shouldn't need to touch <code>_pool</code>/<code>_frame</code>.</p>
 
 
 
@@ -1388,7 +1502,7 @@
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.tabs", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "content.action.edit", "search.suggest", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>
