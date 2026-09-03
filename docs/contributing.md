@@ -84,8 +84,13 @@ The test suite uses `FakeDLightServer` (`tests/fake_server.py`) — a real `asyn
 To run the standalone server for manual testing:
 
 ```bash
+pip install -e ".[dev]"          # the tool imports dlightclient
 python tools/fake_dlight_server.py
 ```
+
+It imports the library's wire codec and port constants rather than restating
+them, so it cannot drift from the client it exists to test — which means it
+needs the package importable, not just a copy of the file.
 
 ---
 

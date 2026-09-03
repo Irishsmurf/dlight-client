@@ -7,7 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `_frame` now encodes both directions of the wire protocol: `encode_response()` and an incremental
+  `decode_command()` join `encode_command()` and `read_response()`. Both fake devices
+  (`tests/fake_server.py` and `tools/fake_dlight_server.py`) now speak the library's codec instead of
+  hand-rolling the server half, so the wire format is stated once. Private module; no public interface
+  change.
+- Byte-literal anchor tests pinning the framing independently of the codec. Every existing framing test
+  built its expected bytes with the same `struct.pack(">I", ...)` under test, so a change to the prefix
+  format would have moved test and implementation together and stayed green.
+
 ### Changed
+- `tools/fake_dlight_server.py` imports the library's ports and discovery probe payload from
+  `dlightclient.constants` rather than restating them as its own literals, and no longer echoes
+  `commandId` in responses — real devices do not do so reliably, and modelling a more capable device
+  than exists lets correlation-dependent code pass against the fake and fail against hardware. The tool
+  now requires the package to be importable (`pip install -e ".[dev]"`); it is no longer stdlib-only.
 - **`ConnectionPool` no longer re-sends commands.** Transparent reconnection (added in 2.0.0) buffered a
   command's bytes and replayed them on a fresh connection when a reused connection failed. Because
   `AsyncDLightClient` also retries, the two layers multiplied: a client configured with `max_retries=2`

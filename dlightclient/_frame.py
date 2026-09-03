@@ -3,6 +3,13 @@
 
 Commands are sent as bare UTF-8 JSON. Responses are a 4-byte big-endian
 length prefix followed by a JSON payload.
+
+Both directions live here. The client half (``encode_command``,
+``read_response``) is what the library uses; the server half
+(``encode_response``, ``decode_command``) is what the project's two fake
+devices use, so the wire format is stated once rather than re-implemented by
+every party that speaks it. The module stays stateless — bytes and dicts
+only, no sockets and no connection lifecycle.
 """
 
 import asyncio
@@ -43,6 +50,59 @@ def encode_command(command: Dict[str, Any]) -> bytes:
         return json.dumps(command).encode("utf-8")
     except TypeError as e:
         raise DLightCommandError(f"Failed to serialize command to JSON: {e}\nCommand: {mask_command(command)}") from e
+
+
+def encode_response(payload: Dict[str, Any]) -> bytes:
+    """Serializes a response dict to the bytes a device sends on the wire.
+
+    The mirror of :func:`read_response`: a 4-byte big-endian length prefix
+    followed by that many bytes of UTF-8 JSON.
+    """
+    body = json.dumps(payload).encode("utf-8")
+    return struct.pack(">I", len(body)) + body
+
+
+def decode_command(buffer: bytearray) -> Optional[Dict[str, Any]]:
+    """Decodes one command from the head of ``buffer``, consuming its bytes.
+
+    The mirror of :func:`encode_command`, and awkward for the same reason the
+    request direction is awkward: commands arrive as bare JSON with no length
+    prefix and no delimiter, and a connection may carry several back to back.
+    The only way to find the end of one is to keep trying to parse until it
+    succeeds.
+
+    Returns ``None`` when the buffer does not yet hold a complete command,
+    leaving it untouched so the caller can read more and try again. Anything
+    that is not yet valid JSON is treated as incomplete rather than as an
+    error — a truncated command and a malformed one are indistinguishable
+    until more bytes arrive or the peer gives up.
+
+    Args:
+        buffer: Received bytes. Mutated in place: a decoded command's bytes
+            are removed, and nothing is removed otherwise.
+
+    Returns:
+        The decoded command, or ``None`` if more bytes are needed.
+    """
+    if not buffer:
+        return None
+
+    try:
+        text = bytes(buffer).decode("utf-8")
+    except UnicodeDecodeError:
+        # A multi-byte character straddles the end of the buffer; the bytes
+        # that complete it have not arrived yet.
+        return None
+
+    try:
+        command, end = json.JSONDecoder().raw_decode(text)
+    except json.JSONDecodeError:
+        return None
+
+    # raw_decode reports a character offset; the buffer is bytes. Re-encode
+    # the consumed prefix to delete the right number of them.
+    del buffer[: len(text[:end].encode("utf-8"))]
+    return command  # type: ignore[no-any-return]
 
 
 async def read_response(
