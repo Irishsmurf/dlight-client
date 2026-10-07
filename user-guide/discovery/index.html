@@ -664,6 +664,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#streaming-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Streaming results
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#firewall-and-permissions" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1313,6 +1324,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#streaming-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Streaming results
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#firewall-and-permissions" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1466,8 +1488,16 @@
 <a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>
 <a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">scan</span><span class="p">())</span>
 </code></pre></div>
+<h2 id="streaming-results">Streaming results<a class="headerlink" href="#streaming-results" title="Permanent link">&para;</a></h2>
+<p><code>discover_devices_stream()</code> takes the same parameters (with <code>timeout</code> in place of <code>discovery_duration</code>) and yields each lamp as soon as it replies, instead of waiting for the whole window:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">dlightclient</span><span class="w"> </span><span class="kn">import</span> <span class="n">discover_devices_stream</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="k">async</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">discover_devices_stream</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">5.0</span><span class="p">):</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Found </span><span class="si">{</span><span class="n">d</span><span class="p">[</span><span class="s1">'deviceId'</span><span class="p">]</span><span class="si">}</span><span class="s2"> @ </span><span class="si">{</span><span class="n">d</span><span class="p">[</span><span class="s1">'ip_address'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</code></pre></div>
+<p>If you stop early (for example, <code>break</code> once you have found the lamp you want), close the generator so it releases port 9487 straight away — see <a href="../../api/discovery/#cleanup">Cleanup</a>.</p>
 <h2 id="firewall-and-permissions">Firewall and permissions<a class="headerlink" href="#firewall-and-permissions" title="Permanent link">&para;</a></h2>
-<p>On Linux, binding a UDP socket to port 9487 may require that the port is not already in use by another process. If you get a <code>PermissionError</code>, check that no other instance of the client (or a Home Assistant integration) is already running a listener on that port.</p>
+<p>On Linux, binding a UDP socket to port 9487 requires that the port is not already in use by another process. Discovery does not raise on this: it logs an error on the <code>dlightclient.discovery</code> logger and returns no devices. If a scan unexpectedly finds nothing, enable logging and check that no other instance of the client (or a Home Assistant integration) is already running a listener on that port.</p>
 <div class="admonition warning">
 <p class="admonition-title">Same subnet required</p>
 <p>UDP broadcast does not cross router boundaries. Your machine and your lamps must be on the same Layer-2 segment. If you use VLANs or a guest Wi-Fi network, discovery will not find lamps on the other segment.</p>
