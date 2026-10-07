@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] — 2026-10-07
+
 ### Fixed
 - A discovery started immediately after another one returned no devices: `transport.close()` frees the
   socket on a later event-loop iteration, so `response_port` was still bound and the new listener failed
@@ -15,13 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed a spurious "Could not get underlying socket ... to enable broadcast" warning logged on every
   discovery. The explicit `SO_BROADCAST` call it guarded was redundant — `allow_broadcast=True` already sets
   the option — so broadcast was always enabled; the block is gone.
-
-### Changed
-- `discover_devices` now collects from `discover_devices_stream` instead of duplicating its socket setup and
-  teardown. Results and error handling are unchanged.
-- `discover_devices_stream` is annotated as returning `AsyncGenerator` (was `AsyncIterator`), so type
-  checkers accept `aclose()` / `contextlib.aclosing`. The API docs now describe closing the stream when you
-  stop iterating early, and correct the claim that discovery raises `OSError` (it logs and returns nothing).
 
 ### Added
 - `_frame` now encodes both directions of the wire protocol: `encode_response()` and an incremental
@@ -34,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   format would have moved test and implementation together and stayed green.
 
 ### Changed
+- `discover_devices` now collects from `discover_devices_stream` instead of duplicating its socket setup and
+  teardown. Results and error handling are unchanged.
+- `discover_devices_stream` is annotated as returning `AsyncGenerator` (was `AsyncIterator`), so type
+  checkers accept `aclose()` / `contextlib.aclosing`. The API docs now describe closing the stream when you
+  stop iterating early, and correct the claim that discovery raises `OSError` (it logs and returns nothing).
 - `tools/fake_dlight_server.py` imports the library's ports and discovery probe payload from
   `dlightclient.constants` rather than restating them as its own literals, and no longer echoes
   `commandId` in responses — real devices do not do so reliably, and modelling a more capable device
