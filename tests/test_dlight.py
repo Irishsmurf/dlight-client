@@ -1,6 +1,6 @@
 import asyncio
 import json
-import socket  # Still needed for socket errors, constants
+import socket
 import struct
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -21,7 +21,6 @@ from dlightclient import (
 )
 
 # Import the internal protocol class for UDP testing
-from dlightclient.discovery import _DiscoveryProtocol
 
 # Module paths for patching specific implementations
 CLIENT_MODULE_PATH = "dlightclient.client"
@@ -266,321 +265,170 @@ class TestAsyncDLightClientTCP(unittest.IsolatedAsyncioTestCase):
 
 # Use IsolatedAsyncioTestCase for tests involving actual awaits on mocked objects
 # Patch asyncio's loop methods and sleep where they are used: in the discovery module
-@patch(f"{DISCOVERY_MODULE_PATH}.asyncio.sleep", new_callable=AsyncMock)
-@patch(f"{DISCOVERY_MODULE_PATH}.asyncio.get_running_loop")
-class TestAsyncDLightClientUDP(unittest.IsolatedAsyncioTestCase):
-    """Tests async UDP Discovery, mocking loop and protocol."""
+def _fake_discovery_endpoints(responses=(), listen_error=None):
+    """Build a stand-in for ``loop.create_datagram_endpoint``.
 
-    # Helper to configure the endpoint mock side effect for UDP tests
-    def _configure_udp_endpoint_mock(self, mock_create_endpoint, listen_error=None, send_error=None):
-        mock_listen_transport = AsyncMock(spec=asyncio.DatagramTransport)
-        mock_send_transport = AsyncMock(spec=asyncio.DatagramTransport)
-        mock_send_sock = MagicMock(spec=socket.socket)
-        mock_send_transport.get_extra_info.return_value = mock_send_sock
+    The first call (the listener) gets the real protocol; the second (the
+    sender) gets a transport whose ``sendto`` makes every ``(bytes, addr)`` in
+    *responses* arrive at the listener, as lamps answering the probe would.
+    Returns ``(create_endpoint, listen_transport, send_transport, calls)``.
+    """
+    listen_transport = MagicMock(spec=asyncio.DatagramTransport)
+    send_transport = MagicMock(spec=asyncio.DatagramTransport)
+    calls = []
 
-        shared_results = []
-        shared_set = set()
-        protocol_instance_holder = [None]
-
-        def protocol_factory():
-            instance = _DiscoveryProtocol(shared_set, shared_results)
-            protocol_instance_holder[0] = instance
-            return instance
-
-        # Define side effects based on potential errors during creation
-        async def endpoint_side_effect(*args, **kwargs):
-            # Simulate listener creation (first call)
-            if listen_error and mock_create_endpoint.await_count == 1:
-                print(f"TEST: Simulating listener endpoint error: {listen_error}")
+    async def create_endpoint(protocol_factory, **kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            if listen_error is not None:
                 raise listen_error
-            listener_protocol = protocol_factory()  # Create real protocol for listener
-            listener_result = (mock_listen_transport, listener_protocol)
+            listener = protocol_factory()
+            listen_transport.close.side_effect = lambda: asyncio.get_running_loop().call_soon(
+                listener.connection_lost, None
+            )
 
-            # Simulate sender creation (second call)
-            if send_error and mock_create_endpoint.await_count == 2:
-                print(f"TEST: Simulating sender endpoint error: {send_error}")
-                raise send_error
-            sender_result = (mock_send_transport, MagicMock())  # Dummy protocol for sender
+            def answer_probe(_payload):
+                for data, addr in responses:
+                    asyncio.get_running_loop().call_soon(listener.datagram_received, data, addr)
 
-            # Return results based on call count
-            if mock_create_endpoint.await_count == 1:
-                return listener_result
-            elif mock_create_endpoint.await_count == 2:
-                return sender_result
-            else:
-                # Should not happen in current tests
-                raise ValueError("create_datagram_endpoint called too many times")
+            send_transport.sendto.side_effect = answer_probe
+            return listen_transport, listener
+        return send_transport, protocol_factory()
 
-        mock_create_endpoint.side_effect = endpoint_side_effect
-        # Return shared list/set and holder for test assertions/side effects
-        return shared_results, shared_set, protocol_instance_holder, mock_listen_transport, mock_send_transport
+    return create_endpoint, listen_transport, send_transport, calls
 
-    # Test methods are async def
-    async def test_discover_devices_no_response(self, mock_get_loop, mock_sleep):
-        """Test async discovery timeout when no devices respond."""
-        mock_loop = MagicMock(spec=asyncio.AbstractEventLoop)
-        mock_loop.create_datagram_endpoint = AsyncMock()
-        mock_get_loop.return_value = mock_loop
 
-        # Configure endpoint mock (no errors expected here)
-        _, _, _, mock_listen_transport, mock_send_transport = self._configure_udp_endpoint_mock(
-            mock_loop.create_datagram_endpoint
+def _response(ip, **payload):
+    return json.dumps(payload).encode("utf-8"), (ip, 12345)
+
+
+class TestAsyncDLightClientUDP(unittest.IsolatedAsyncioTestCase):
+    """Tests discover_devices against a faked datagram endpoint."""
+
+    async def _discover(self, responses=(), listen_error=None, **kwargs):
+        create_endpoint, listen_transport, send_transport, calls = _fake_discovery_endpoints(responses, listen_error)
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, "create_datagram_endpoint", new=create_endpoint):
+            devices = await discover_devices(discovery_duration=kwargs.pop("discovery_duration", 0.05), **kwargs)
+        return devices, listen_transport, send_transport, calls
+
+    async def test_discover_devices_no_response(self):
+        """No replies within the window yields an empty list and closes both sockets."""
+        devices, listen_transport, send_transport, calls = await self._discover()
+
+        self.assertEqual(devices, [])
+        self.assertEqual(len(calls), 2)
+        send_transport.sendto.assert_called_once()
+        listen_transport.close.assert_called_once()
+        send_transport.close.assert_called_once()
+
+    async def test_discover_devices_one_response(self):
+        """A single reply is returned with the sender's IP stamped on it."""
+        devices, listen_transport, send_transport, _ = await self._discover(
+            [_response("192.168.1.101", deviceModel="M1", deviceId="asyncdev1", swVersion="1", hwVersion="1")]
         )
 
-        # Call the standalone discover_devices function
-        devices = await discover_devices(discovery_duration=0.1)
+        self.assertEqual(
+            devices,
+            [
+                {
+                    "deviceModel": "M1",
+                    "deviceId": "asyncdev1",
+                    "swVersion": "1",
+                    "hwVersion": "1",
+                    "ip_address": "192.168.1.101",
+                }
+            ],
+        )
+        listen_transport.close.assert_called_once()
+        send_transport.close.assert_called_once()
 
-        # Assertions
-        self.assertEqual(devices, [])  # Expect empty list on timeout
-        mock_get_loop.assert_called_once()
-        self.assertEqual(mock_loop.create_datagram_endpoint.await_count, 2)
-        mock_send_transport.sendto.assert_called_once()
-        mock_sleep.assert_awaited_once_with(0.1)
-        mock_listen_transport.close.assert_called_once()
-        mock_send_transport.close.assert_called_once()
-
-    async def test_discover_devices_one_response(self, mock_get_loop, mock_sleep):
-        """Test async discovery finding one device."""
-        mock_loop = MagicMock(spec=asyncio.AbstractEventLoop)
-        mock_loop.create_datagram_endpoint = AsyncMock()
-        mock_get_loop.return_value = mock_loop
-
-        # Configure endpoint mock, get shared lists and protocol holder
-        shared_results, shared_set, protocol_instance_holder, mock_listen_transport, mock_send_transport = (
-            self._configure_udp_endpoint_mock(mock_loop.create_datagram_endpoint)
+    async def test_discover_devices_multiple_responses(self):
+        """Replies from several lamps are all returned."""
+        devices, _, _, _ = await self._discover(
+            [
+                _response("192.168.1.101", deviceId="dev1", deviceModel="M1"),
+                _response("192.168.1.102", deviceId="dev2", deviceModel="M2"),
+            ]
         )
 
-        # Device details to simulate
-        device_ip = "192.168.1.101"
-        device_id = "asyncdev1"
-        response_payload_dict = {"deviceModel": "M1", "deviceId": device_id, "swVersion": "1", "hwVersion": "1"}
-        response_bytes = json.dumps(response_payload_dict).encode("utf-8")
-        sender_address = (device_ip, 12345)  # Source address of simulated response
+        self.assertEqual({d["ip_address"] for d in devices}, {"192.168.1.101", "192.168.1.102"})
+        self.assertEqual({d["deviceId"] for d in devices}, {"dev1", "dev2"})
 
-        # Define the side effect for mock_sleep: Call the captured protocol instance's method
-        async def sleep_and_receive(*args, **kwargs):
-            proto_instance = protocol_instance_holder[0]
-            self.assertIsNotNone(proto_instance, "Protocol instance was not captured by factory")
-            # Manually call the protocol's method to simulate receiving data
-            proto_instance.datagram_received(response_bytes, sender_address)
+    async def test_discover_devices_duplicate_response(self):
+        """Repeated replies from one IP are reported once."""
+        reply = _response("192.168.1.105", deviceId="dupdev")
+        devices, _, _, _ = await self._discover([reply, reply])
 
-        mock_sleep.side_effect = sleep_and_receive  # Assign the side effect
+        self.assertEqual(devices, [{"deviceId": "dupdev", "ip_address": "192.168.1.105"}])
 
-        # --- Call the function under test ---
-        await discover_devices(discovery_duration=0.1)
-
-        # --- Assertions ---
-
-        # Assert against the list modified by the protocol instance via the side effect
-        self.assertEqual(len(shared_results), 1)  # Check the list managed by the test
-        expected_device_info = response_payload_dict.copy()
-        expected_device_info["ip_address"] = device_ip  # Check IP was added
-        self.assertEqual(shared_results[0], expected_device_info)
-        self.assertEqual(shared_set, {device_ip})  # Check set was updated
-
-        # Verify the discovery process ran
-        mock_get_loop.assert_called_once()
-        self.assertEqual(mock_loop.create_datagram_endpoint.await_count, 2)
-        mock_send_transport.sendto.assert_called_once()
-        mock_sleep.assert_awaited_once_with(0.1)
-        mock_listen_transport.close.assert_called_once()
-        mock_send_transport.close.assert_called_once()
-
-    async def test_discover_devices_multiple_responses(self, mock_get_loop, mock_sleep):
-        """Test async discovery finding multiple devices."""
-        mock_loop = MagicMock(spec=asyncio.AbstractEventLoop)
-        mock_loop.create_datagram_endpoint = AsyncMock()
-        mock_get_loop.return_value = mock_loop
-
-        shared_results, shared_set, protocol_instance_holder, mock_listen_transport, mock_send_transport = (
-            self._configure_udp_endpoint_mock(mock_loop.create_datagram_endpoint)
-        )
-
-        # --- Device 1 ---
-        dev1_ip = "192.168.1.101"
-        dev1_id = "dev1"
-        dev1_payload = {"deviceId": dev1_id, "deviceModel": "M1"}
-        dev1_bytes = json.dumps(dev1_payload).encode("utf-8")
-        dev1_addr = (dev1_ip, 12345)
-        # --- Device 2 ---
-        dev2_ip = "192.168.1.102"
-        dev2_id = "dev2"
-        dev2_payload = {"deviceId": dev2_id, "deviceModel": "M2"}
-        dev2_bytes = json.dumps(dev2_payload).encode("utf-8")
-        dev2_addr = (dev2_ip, 54321)
-
-        # Side effect to simulate receiving two datagrams
-        async def sleep_and_receive_multiple(*args, **kwargs):
-            proto_instance = protocol_instance_holder[0]
-            self.assertIsNotNone(proto_instance)
-            proto_instance.datagram_received(dev1_bytes, dev1_addr)
-            proto_instance.datagram_received(dev2_bytes, dev2_addr)  # Receive second one
-
-        mock_sleep.side_effect = sleep_and_receive_multiple
-
-        await discover_devices(discovery_duration=0.1)
-
-        # Assertions: Check shared list contains both devices
-        self.assertEqual(len(shared_results), 2)
-        self.assertEqual(shared_set, {dev1_ip, dev2_ip})
-        # Check content (order might vary, check presence)
-        found_ips = {d["ip_address"] for d in shared_results}
-        self.assertEqual(found_ips, {dev1_ip, dev2_ip})
-        found_ids = {d["deviceId"] for d in shared_results}
-        self.assertEqual(found_ids, {dev1_id, dev2_id})
-
-    async def test_discover_devices_duplicate_response(self, mock_get_loop, mock_sleep):
-        """Test async discovery handles duplicate responses from the same IP."""
-        mock_loop = MagicMock(spec=asyncio.AbstractEventLoop)
-        mock_loop.create_datagram_endpoint = AsyncMock()
-        mock_get_loop.return_value = mock_loop
-
-        shared_results, shared_set, protocol_instance_holder, mock_listen_transport, mock_send_transport = (
-            self._configure_udp_endpoint_mock(mock_loop.create_datagram_endpoint)
-        )
-
-        # Device details
-        device_ip = "192.168.1.105"
-        device_id = "dupdev"
-        payload_dict = {"deviceId": device_id}
-        payload_bytes = json.dumps(payload_dict).encode("utf-8")
-        sender_address = (device_ip, 12345)
-
-        # Side effect to simulate receiving the same datagram twice
-        async def sleep_and_receive_duplicate(*args, **kwargs):
-            proto_instance = protocol_instance_holder[0]
-            self.assertIsNotNone(proto_instance)
-            proto_instance.datagram_received(payload_bytes, sender_address)
-            proto_instance.datagram_received(payload_bytes, sender_address)  # Send again
-
-        mock_sleep.side_effect = sleep_and_receive_duplicate
-
-        await discover_devices(discovery_duration=0.1)
-
-        # Assertions: Check shared list contains only one entry
-        self.assertEqual(len(shared_results), 1)
-        self.assertEqual(shared_set, {device_ip})
-        expected_device_info = payload_dict.copy()
-        expected_device_info["ip_address"] = device_ip
-        self.assertEqual(shared_results[0], expected_device_info)
-
-    async def test_discover_devices_malformed_json(self, mock_get_loop, mock_sleep):
-        """Test async discovery handles malformed JSON responses gracefully."""
-        mock_loop = MagicMock(spec=asyncio.AbstractEventLoop)
-        mock_loop.create_datagram_endpoint = AsyncMock()
-        mock_get_loop.return_value = mock_loop
-
-        shared_results, shared_set, protocol_instance_holder, mock_listen_transport, mock_send_transport = (
-            self._configure_udp_endpoint_mock(mock_loop.create_datagram_endpoint)
-        )
-
-        # Malformed data
-        malformed_bytes = b'{"deviceId": "bad", "model":'
-        sender_address = ("192.168.1.200", 12345)
-
-        # Side effect to simulate receiving bad data
-        async def sleep_and_receive_bad(*args, **kwargs):
-            proto_instance = protocol_instance_holder[0]
-            self.assertIsNotNone(proto_instance)
-            # Patch logger within discovery module to check warnings
-            with patch(f"{DISCOVERY_MODULE_PATH}._LOGGER") as mock_logger:
-                proto_instance.datagram_received(malformed_bytes, sender_address)
-                # Check that a warning was logged
-                mock_logger.warning.assert_called_once()
-                self.assertIn("Error decoding discovery response", mock_logger.warning.call_args[0][0])
-
-        mock_sleep.side_effect = sleep_and_receive_bad
-
-        await discover_devices(discovery_duration=0.1)
-
-        # Assertions: Check shared list is empty
-        self.assertEqual(len(shared_results), 0)
-        self.assertEqual(len(shared_set), 0)
-
-    async def test_discover_devices_permission_error_bind(self, mock_get_loop, mock_sleep):
-        """Test discovery handles PermissionError during listener bind."""
-        mock_loop = MagicMock(spec=asyncio.AbstractEventLoop)
-        mock_loop.create_datagram_endpoint = AsyncMock()
-        mock_get_loop.return_value = mock_loop
-
-        # Configure endpoint mock to raise PermissionError on first call (listener)
-        self._configure_udp_endpoint_mock(
-            mock_loop.create_datagram_endpoint, listen_error=PermissionError("Permission denied for UDP bind")
-        )
-
-        # Patch logger to check error message
+    async def test_discover_devices_malformed_json(self):
+        """A reply that is not JSON is logged and skipped."""
         with patch(f"{DISCOVERY_MODULE_PATH}._LOGGER") as mock_logger:
-            devices = await discover_devices(discovery_duration=0.1)
-            # Assertions
-            self.assertEqual(devices, [])  # Expect empty list on error
-            mock_logger.error.assert_called_once()
-            self.assertIn("Permission denied for UDP broadcast or binding", mock_logger.error.call_args[0][0])
+            devices, _, _, _ = await self._discover([(b'{"deviceId": "bad", "model":', ("192.168.1.200", 12345))])
 
-        # Check endpoint creation was attempted only once
-        self.assertEqual(mock_loop.create_datagram_endpoint.await_count, 1)
-        mock_sleep.assert_not_awaited()  # Should exit before sleep
+        self.assertEqual(devices, [])
+        mock_logger.warning.assert_called_once()
+        self.assertIn("Error decoding discovery response", mock_logger.warning.call_args[0][0])
 
-    async def test_discover_devices_os_error_bind(self, mock_get_loop, mock_sleep):
-        """Test discovery handles OSError (e.g., port in use) during listener bind."""
-        mock_loop = MagicMock(spec=asyncio.AbstractEventLoop)
-        mock_loop.create_datagram_endpoint = AsyncMock()
-        mock_get_loop.return_value = mock_loop
-
-        # Configure endpoint mock to raise OSError on first call (listener)
-        self._configure_udp_endpoint_mock(
-            mock_loop.create_datagram_endpoint, listen_error=OSError("Address already in use")
-        )
-
-        # Patch logger to check error message
+    async def test_discover_devices_permission_error_bind(self):
+        """PermissionError binding the listener is logged and yields an empty list."""
         with patch(f"{DISCOVERY_MODULE_PATH}._LOGGER") as mock_logger:
-            devices = await discover_devices(discovery_duration=0.1)
-            # Assertions
-            self.assertEqual(devices, [])  # Expect empty list on error
-            mock_logger.error.assert_called_once()
-            self.assertIn("Network error during discovery", mock_logger.error.call_args[0][0])
+            devices, _, send_transport, calls = await self._discover(
+                listen_error=PermissionError("Permission denied for UDP bind")
+            )
 
-        # Check endpoint creation was attempted only once
-        self.assertEqual(mock_loop.create_datagram_endpoint.await_count, 1)
-        mock_sleep.assert_not_awaited()  # Should exit before sleep
+        self.assertEqual(devices, [])
+        self.assertEqual(len(calls), 1)
+        send_transport.sendto.assert_not_called()
+        mock_logger.error.assert_called_once()
+        self.assertIn("Permission denied for UDP broadcast or binding", mock_logger.error.call_args[0][0])
 
-    async def test_discovery_protocol_connection_made_accepts_base_transport(self, mock_get_loop, mock_sleep):
-        """Test _DiscoveryProtocol.connection_made accepts BaseTransport without AssertionError."""
-        proto = _DiscoveryProtocol(set())
-        mock_transport = MagicMock(spec=asyncio.BaseTransport)
-        # Should not raise AssertionError even if transport is not DatagramTransport
-        proto.connection_made(mock_transport)
-        self.assertEqual(proto.transport, mock_transport)
+    async def test_discover_devices_os_error_bind(self):
+        """OSError binding the listener (e.g. port in use) is logged and yields an empty list."""
+        with patch(f"{DISCOVERY_MODULE_PATH}._LOGGER") as mock_logger:
+            devices, _, _, calls = await self._discover(listen_error=OSError("Address already in use"))
 
-    async def test_discover_devices_broadcast_enabled_on_transport_socket(self, mock_get_loop, mock_sleep):
-        """Test broadcast is enabled when socket is a TransportSocket wrapper."""
-        mock_loop = MagicMock(spec=asyncio.AbstractEventLoop)
-        mock_loop.create_datagram_endpoint = AsyncMock()
-        mock_get_loop.return_value = mock_loop
+        self.assertEqual(devices, [])
+        self.assertEqual(len(calls), 1)
+        mock_logger.error.assert_called_once()
+        self.assertIn("Network error during discovery", mock_logger.error.call_args[0][0])
 
-        mock_listen_transport = AsyncMock(spec=asyncio.DatagramTransport)
-        mock_send_transport = AsyncMock(spec=asyncio.DatagramTransport)
+    async def test_discover_devices_passes_ports_and_broadcast(self):
+        """Ports and broadcast address reach the endpoints; the sender requests broadcast."""
+        _, _, _, calls = await self._discover(response_port=1111, discovery_port=2222, broadcast_address="10.0.0.255")
 
-        # Create a mock socket object that has setsockopt but is NOT isinstance(..., socket.socket)
-        class MockTransportSocket:
-            def __init__(self):
-                self.setsockopt = MagicMock()
+        self.assertEqual(calls[0]["local_addr"], ("0.0.0.0", 1111))
+        self.assertEqual(calls[1]["remote_addr"], ("10.0.0.255", 2222))
+        self.assertTrue(calls[1]["allow_broadcast"])
 
-        mock_sock = MockTransportSocket()
-        mock_send_transport.get_extra_info.return_value = mock_sock
+    async def test_discover_devices_back_to_back_rebinds_response_port(self):
+        """A discovery started as soon as the previous one returns can bind the same port."""
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.bind(("127.0.0.1", 0))
+            response_port = probe.getsockname()[1]
 
-        await_count = 0
+        with patch(f"{DISCOVERY_MODULE_PATH}._LOGGER") as mock_logger:
+            for _ in range(2):
+                await discover_devices(
+                    discovery_duration=0.01, response_port=response_port, broadcast_address="127.0.0.1"
+                )
 
-        async def endpoint_side_effect(*args, **kwargs):
-            nonlocal await_count
-            await_count += 1
-            if await_count == 1:
-                return (mock_listen_transport, _DiscoveryProtocol(set(), []))
-            return (mock_send_transport, MagicMock())
+        mock_logger.error.assert_not_called()
 
-        mock_loop.create_datagram_endpoint.side_effect = endpoint_side_effect
+    async def test_discover_devices_closes_sockets_when_cancelled(self):
+        """Cancelling discover_devices mid-window still releases both sockets."""
+        create_endpoint, listen_transport, send_transport, _ = _fake_discovery_endpoints()
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, "create_datagram_endpoint", new=create_endpoint):
+            task = asyncio.create_task(discover_devices(discovery_duration=10))
+            await asyncio.sleep(0.01)
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
 
-        await discover_devices(discovery_duration=0.1)
-        mock_sock.setsockopt.assert_called_once_with(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        listen_transport.close.assert_called_once()
+        send_transport.close.assert_called_once()
 
 
 class TestAsyncDLightClientPersistence(unittest.IsolatedAsyncioTestCase):
@@ -653,8 +501,6 @@ class TestAsyncDLightClientUDPStream(unittest.IsolatedAsyncioTestCase):
         loop = asyncio.get_running_loop()
         mock_listen_transport = AsyncMock(spec=asyncio.DatagramTransport)
         mock_send_transport = AsyncMock(spec=asyncio.DatagramTransport)
-        mock_send_sock = MagicMock(spec=socket.socket)
-        mock_send_transport.get_extra_info.return_value = mock_send_sock
 
         protocol_instance_holder = [None]
         await_count = 0
@@ -665,6 +511,7 @@ class TestAsyncDLightClientUDPStream(unittest.IsolatedAsyncioTestCase):
             if await_count == 1:
                 proto = protocol_factory()
                 protocol_instance_holder[0] = proto
+                mock_listen_transport.close.side_effect = lambda: loop.call_soon(proto.connection_lost, None)
                 return (mock_listen_transport, proto)
             else:
                 return (mock_send_transport, MagicMock())
@@ -704,8 +551,6 @@ class TestAsyncDLightClientUDPStream(unittest.IsolatedAsyncioTestCase):
         loop = asyncio.get_running_loop()
         mock_listen_transport = AsyncMock(spec=asyncio.DatagramTransport)
         mock_send_transport = AsyncMock(spec=asyncio.DatagramTransport)
-        mock_send_sock = MagicMock(spec=socket.socket)
-        mock_send_transport.get_extra_info.return_value = mock_send_sock
 
         protocol_instance_holder = [None]
         await_count = 0
@@ -716,6 +561,7 @@ class TestAsyncDLightClientUDPStream(unittest.IsolatedAsyncioTestCase):
             if await_count == 1:
                 proto = protocol_factory()
                 protocol_instance_holder[0] = proto
+                mock_listen_transport.close.side_effect = lambda: loop.call_soon(proto.connection_lost, None)
                 return (mock_listen_transport, proto)
             else:
                 return (mock_send_transport, MagicMock())
@@ -761,8 +607,6 @@ class TestAsyncDLightClientUDPStream(unittest.IsolatedAsyncioTestCase):
         loop = asyncio.get_running_loop()
         mock_listen_transport = AsyncMock(spec=asyncio.DatagramTransport)
         mock_send_transport = AsyncMock(spec=asyncio.DatagramTransport)
-        mock_send_sock = MagicMock(spec=socket.socket)
-        mock_send_transport.get_extra_info.return_value = mock_send_sock
 
         protocol_instance_holder = [None]
         await_count = 0
@@ -773,6 +617,7 @@ class TestAsyncDLightClientUDPStream(unittest.IsolatedAsyncioTestCase):
             if await_count == 1:
                 proto = protocol_factory()
                 protocol_instance_holder[0] = proto
+                mock_listen_transport.close.side_effect = lambda: loop.call_soon(proto.connection_lost, None)
                 return (mock_listen_transport, proto)
             else:
                 return (mock_send_transport, MagicMock())
@@ -807,8 +652,6 @@ class TestAsyncDLightClientUDPStream(unittest.IsolatedAsyncioTestCase):
         loop = asyncio.get_running_loop()
         mock_listen_transport = AsyncMock(spec=asyncio.DatagramTransport)
         mock_send_transport = AsyncMock(spec=asyncio.DatagramTransport)
-        mock_send_sock = MagicMock(spec=socket.socket)
-        mock_send_transport.get_extra_info.return_value = mock_send_sock
 
         protocol_instance_holder = [None]
         await_count = 0
@@ -819,6 +662,7 @@ class TestAsyncDLightClientUDPStream(unittest.IsolatedAsyncioTestCase):
             if await_count == 1:
                 proto = protocol_factory()
                 protocol_instance_holder[0] = proto
+                mock_listen_transport.close.side_effect = lambda: loop.call_soon(proto.connection_lost, None)
                 return (mock_listen_transport, proto)
             else:
                 return (mock_send_transport, MagicMock())
@@ -866,34 +710,6 @@ class TestAsyncDLightClientUDPStream(unittest.IsolatedAsyncioTestCase):
             async for dev in discover_devices_stream(timeout=0.2):
                 devices.append(dev)
             self.assertEqual(devices, [])
-
-    async def test_discover_devices_stream_broadcast_enabled_on_transport_socket(self):
-        """Test discover_devices_stream enables broadcast on TransportSocket wrappers."""
-        loop = asyncio.get_running_loop()
-        mock_listen_transport = AsyncMock(spec=asyncio.DatagramTransport)
-        mock_send_transport = AsyncMock(spec=asyncio.DatagramTransport)
-
-        class MockTransportSocket:
-            def __init__(self):
-                self.setsockopt = MagicMock()
-
-        mock_sock = MockTransportSocket()
-        mock_send_transport.get_extra_info.return_value = mock_sock
-
-        await_count = 0
-
-        async def mock_create_datagram_endpoint(protocol_factory, local_addr=None, remote_addr=None, **kwargs):
-            nonlocal await_count
-            await_count += 1
-            if await_count == 1:
-                return (mock_listen_transport, protocol_factory())
-            return (mock_send_transport, MagicMock())
-
-        with patch.object(loop, "create_datagram_endpoint", new=mock_create_datagram_endpoint):
-            async for _ in discover_devices_stream(timeout=0.05):
-                pass
-
-        mock_sock.setsockopt.assert_called_once_with(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
 
 if __name__ == "__main__":

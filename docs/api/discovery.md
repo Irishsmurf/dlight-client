@@ -19,7 +19,7 @@ async def discover_devices_stream(
     response_port: int = 9487,
     discovery_port: int = 9478,
     broadcast_address: str = "255.255.255.255",
-) -> AsyncIterator[dict[str, Any]]
+) -> AsyncGenerator[dict[str, Any], None]
 ```
 
 ## Parameters
@@ -49,11 +49,26 @@ Each dict contains:
 
 Results are deduplicated by `ip_address`. If the same lamp responds multiple times within the window, only the first response is processed.
 
-## Raises
+## Errors
 
-| Exception | When |
-|---|---|
-| `OSError` | The UDP socket cannot be bound (e.g. port already in use). Not a `DLightError`. |
+Neither function raises for network failures. If a socket cannot be bound (e.g. `response_port` already in use) or broadcast is refused, the error is logged on the `dlightclient.discovery` logger and `discover_devices` returns an empty list / `discover_devices_stream` yields nothing.
+
+## Cleanup
+
+Both functions close their sockets before finishing and wait for the listener to release `response_port`, so a new discovery can start as soon as the previous one returns.
+
+For `discover_devices_stream`, that only happens once the generator finishes or is closed. If you leave the loop early (`break`, `return`, an exception) the generator is not closed — its sockets stay open until it is garbage-collected. Close it explicitly:
+
+```python
+from contextlib import aclosing  # Python 3.10+
+
+async with aclosing(discover_devices_stream()) as stream:
+    async for d in stream:
+        if d["deviceId"] == wanted:
+            break
+```
+
+On Python 3.9, call `await stream.aclose()` in a `finally` block instead.
 
 ## Protocol note
 
