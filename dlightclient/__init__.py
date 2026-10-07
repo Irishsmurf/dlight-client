@@ -20,6 +20,7 @@ from .constants import (
     FACTORY_RESET_IP,
     MAX_PAYLOAD_SIZE,
     STATUS_SUCCESS,
+    UDP_DISCOVERY_PAYLOAD,
     UDP_DISCOVERY_PAYLOAD_HEX,
 )
 from .device import (
@@ -54,6 +55,7 @@ __all__ = [
     "FACTORY_RESET_IP",
     "DEFAULT_TIMEOUT",
     "BROADCAST_ADDRESS",
+    "UDP_DISCOVERY_PAYLOAD",
     "UDP_DISCOVERY_PAYLOAD_HEX",
     "MAX_PAYLOAD_SIZE",
     "STATUS_SUCCESS",

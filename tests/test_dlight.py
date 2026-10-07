@@ -322,6 +322,12 @@ class TestAsyncDLightClientUDP(unittest.IsolatedAsyncioTestCase):
         listen_transport.close.assert_called_once()
         send_transport.close.assert_called_once()
 
+    async def test_discover_devices_sends_the_probe_as_literal_text(self):
+        """The probe goes out as the 40 ASCII characters; real lamps ignore the hex-decoded bytes."""
+        _, _, send_transport, _ = await self._discover()
+
+        send_transport.sendto.assert_called_once_with(b"476f6f676c654e50455f457269635f5761796e65")
+
     async def test_discover_devices_one_response(self):
         """A single reply is returned with the sender's IP stamped on it."""
         devices, listen_transport, send_transport, _ = await self._discover(

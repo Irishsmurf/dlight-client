@@ -115,7 +115,7 @@ TLS is opt-in (`ssl=True` or custom `SSLContext`). The pool keys connections by 
 
 ### Discovery channel — UDP broadcast
 
-`discover_devices()` opens a listener on local port **9487** and broadcasts a fixed magic probe to port **9478**. Devices reply with a JSON datagram of identity metadata. Results are deduplicated by IP and returned after a fixed window (default 3 s).
+`discover_devices()` opens a listener on local port **9487** and broadcasts a fixed magic probe to port **9478**: the literal ASCII text `476f6f676c654e50455f457269635f5761796e65`, not its hex-decoded bytes. Devices reply with a JSON datagram of identity metadata. Results are deduplicated by IP and returned after a fixed window (default 3 s).
 
 ### Provisioning path
 

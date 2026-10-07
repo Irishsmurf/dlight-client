@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Discovery never found real lamps. The probe constant `476f6f676c654e50455f457269635f5761796e65` was
+  hex-decoded and sent as the bytes `GoogleNPE_Eric_Wayne`, but lamps match the 40 ASCII characters
+  literally and ignore the decoded form (confirmed on a GLAMP001, firmware 3.0.4). The probe is now sent
+  as-is. `tools/fake_dlight_server.py` hex-decoded it the same way, so the fake lamp agreed with the
+  client and the tests stayed green; it now expects the literal text, and a byte-literal test pins it.
+
+### Added
+- `UDP_DISCOVERY_PAYLOAD`: the exact probe bytes. `UDP_DISCOVERY_PAYLOAD_HEX` keeps its value.
+- The discovery guide documents the exchange from the lamp's side, with a manual `nc` check.
+
 ## [2.0.1] — 2026-10-07
 
 ### Fixed
