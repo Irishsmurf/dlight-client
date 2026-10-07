@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Fixed `AssertionError` in `_DiscoveryProtocol.connection_made` where default asyncio datagram transports (such as `_SelectorDatagramTransport` on Linux/POSIX) do not subclass `asyncio.DatagramTransport`.
+- Fixed socket broadcast enabling in `discover_devices` and `discover_devices_stream` where `transport.get_extra_info("socket")` returns an `asyncio.TransportSocket` wrapper rather than `socket.socket`.
+
 ### Added
 - `_frame` now encodes both directions of the wire protocol: `encode_response()` and an incremental
   `decode_command()` join `encode_command()` and `read_response()`. Both fake devices

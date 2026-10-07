@@ -40,7 +40,7 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
         results_list: Optional[List[Dict[str, Any]]] = None,
         queue: Optional[asyncio.Queue[Dict[str, Any]]] = None,
     ):
-        self.transport: Optional[asyncio.DatagramTransport] = None
+        self.transport: Optional[asyncio.BaseTransport] = None
         self.discovered_devices_set = discovered_devices_set
         self.results_list = results_list
         self.queue = queue
@@ -48,7 +48,6 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         _LOGGER.debug("Discovery listener connection made (transport ready)")
-        assert isinstance(transport, asyncio.DatagramTransport)
         self.transport = transport
 
     def datagram_received(self, data: bytes, addr: Tuple[str, int]) -> None:
@@ -148,7 +147,7 @@ async def discover_devices(
         # Enable broadcasting on the sending socket (best effort, might be redundant
         # if allow_broadcast=True worked, but good practice)
         sending_socket = send_transport.get_extra_info("socket")
-        if sending_socket and isinstance(sending_socket, socket.socket):
+        if sending_socket is not None and hasattr(sending_socket, "setsockopt"):
             try:
                 sending_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
                 _LOGGER.debug("Broadcast explicitly enabled for sending socket.")
@@ -259,7 +258,7 @@ async def discover_devices_stream(
 
         # Enable broadcasting on the sending socket
         sending_socket = send_transport.get_extra_info("socket")
-        if sending_socket and isinstance(sending_socket, socket.socket):
+        if sending_socket is not None and hasattr(sending_socket, "setsockopt"):
             try:
                 sending_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
                 _LOGGER.debug("Broadcast explicitly enabled for sending socket.")
@@ -325,4 +324,3 @@ async def discover_devices_stream(
                 _LOGGER.debug("Discovery listener transport closed.")
             except Exception as e_close:
                 _LOGGER.debug(f"Error closing listen transport: {e_close}")
-

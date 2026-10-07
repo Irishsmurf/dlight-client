@@ -543,6 +543,45 @@ class TestAsyncDLightClientUDP(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mock_loop.create_datagram_endpoint.await_count, 1)
         mock_sleep.assert_not_awaited()  # Should exit before sleep
 
+    async def test_discovery_protocol_connection_made_accepts_base_transport(self, mock_get_loop, mock_sleep):
+        """Test _DiscoveryProtocol.connection_made accepts BaseTransport without AssertionError."""
+        proto = _DiscoveryProtocol(set())
+        mock_transport = MagicMock(spec=asyncio.BaseTransport)
+        # Should not raise AssertionError even if transport is not DatagramTransport
+        proto.connection_made(mock_transport)
+        self.assertEqual(proto.transport, mock_transport)
+
+    async def test_discover_devices_broadcast_enabled_on_transport_socket(self, mock_get_loop, mock_sleep):
+        """Test broadcast is enabled when socket is a TransportSocket wrapper."""
+        mock_loop = MagicMock(spec=asyncio.AbstractEventLoop)
+        mock_loop.create_datagram_endpoint = AsyncMock()
+        mock_get_loop.return_value = mock_loop
+
+        mock_listen_transport = AsyncMock(spec=asyncio.DatagramTransport)
+        mock_send_transport = AsyncMock(spec=asyncio.DatagramTransport)
+
+        # Create a mock socket object that has setsockopt but is NOT isinstance(..., socket.socket)
+        class MockTransportSocket:
+            def __init__(self):
+                self.setsockopt = MagicMock()
+
+        mock_sock = MockTransportSocket()
+        mock_send_transport.get_extra_info.return_value = mock_sock
+
+        await_count = 0
+
+        async def endpoint_side_effect(*args, **kwargs):
+            nonlocal await_count
+            await_count += 1
+            if await_count == 1:
+                return (mock_listen_transport, _DiscoveryProtocol(set(), []))
+            return (mock_send_transport, MagicMock())
+
+        mock_loop.create_datagram_endpoint.side_effect = endpoint_side_effect
+
+        await discover_devices(discovery_duration=0.1)
+        mock_sock.setsockopt.assert_called_once_with(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
 
 class TestAsyncDLightClientPersistence(unittest.IsolatedAsyncioTestCase):
     """Tests connection pooling and persistent connections."""
@@ -639,6 +678,7 @@ class TestAsyncDLightClientUDPStream(unittest.IsolatedAsyncioTestCase):
             sender_address = (device_ip, 12345)
 
             devices = []
+
             async def run_stream():
                 async for dev in discover_devices_stream(timeout=0.2):
                     devices.append(dev)
@@ -655,7 +695,7 @@ class TestAsyncDLightClientUDPStream(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(devices), 1)
             self.assertEqual(devices[0]["deviceId"], device_id)
             self.assertEqual(devices[0]["ip_address"], device_ip)
-            
+
             mock_listen_transport.close.assert_called_once()
             mock_send_transport.close.assert_called_once()
 
@@ -690,6 +730,7 @@ class TestAsyncDLightClientUDPStream(unittest.IsolatedAsyncioTestCase):
             dev2_bytes = json.dumps(dev2_payload).encode("utf-8")
 
             devices = []
+
             async def run_stream():
                 async for dev in discover_devices_stream(timeout=0.3):
                     devices.append(dev)
@@ -742,6 +783,7 @@ class TestAsyncDLightClientUDPStream(unittest.IsolatedAsyncioTestCase):
             dev_bytes = json.dumps(dev_payload).encode("utf-8")
 
             devices = []
+
             async def run_stream():
                 async for dev in discover_devices_stream(timeout=0.2):
                     devices.append(dev)
@@ -824,6 +866,34 @@ class TestAsyncDLightClientUDPStream(unittest.IsolatedAsyncioTestCase):
             async for dev in discover_devices_stream(timeout=0.2):
                 devices.append(dev)
             self.assertEqual(devices, [])
+
+    async def test_discover_devices_stream_broadcast_enabled_on_transport_socket(self):
+        """Test discover_devices_stream enables broadcast on TransportSocket wrappers."""
+        loop = asyncio.get_running_loop()
+        mock_listen_transport = AsyncMock(spec=asyncio.DatagramTransport)
+        mock_send_transport = AsyncMock(spec=asyncio.DatagramTransport)
+
+        class MockTransportSocket:
+            def __init__(self):
+                self.setsockopt = MagicMock()
+
+        mock_sock = MockTransportSocket()
+        mock_send_transport.get_extra_info.return_value = mock_sock
+
+        await_count = 0
+
+        async def mock_create_datagram_endpoint(protocol_factory, local_addr=None, remote_addr=None, **kwargs):
+            nonlocal await_count
+            await_count += 1
+            if await_count == 1:
+                return (mock_listen_transport, protocol_factory())
+            return (mock_send_transport, MagicMock())
+
+        with patch.object(loop, "create_datagram_endpoint", new=mock_create_datagram_endpoint):
+            async for _ in discover_devices_stream(timeout=0.05):
+                pass
+
+        mock_sock.setsockopt.assert_called_once_with(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
 
 if __name__ == "__main__":
