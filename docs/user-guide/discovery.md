@@ -65,9 +65,22 @@ async def scan():
 asyncio.run(scan())
 ```
 
+## Streaming results
+
+`discover_devices_stream()` takes the same parameters (with `timeout` in place of `discovery_duration`) and yields each lamp as soon as it replies, instead of waiting for the whole window:
+
+```python
+from dlightclient import discover_devices_stream
+
+async for d in discover_devices_stream(timeout=5.0):
+    print(f"Found {d['deviceId']} @ {d['ip_address']}")
+```
+
+If you stop early (for example, `break` once you have found the lamp you want), close the generator so it releases port 9487 straight away — see [Cleanup](../api/discovery.md#cleanup).
+
 ## Firewall and permissions
 
-On Linux, binding a UDP socket to port 9487 may require that the port is not already in use by another process. If you get a `PermissionError`, check that no other instance of the client (or a Home Assistant integration) is already running a listener on that port.
+On Linux, binding a UDP socket to port 9487 requires that the port is not already in use by another process. Discovery does not raise on this: it logs an error on the `dlightclient.discovery` logger and returns no devices. If a scan unexpectedly finds nothing, enable logging and check that no other instance of the client (or a Home Assistant integration) is already running a listener on that port.
 
 !!! warning "Same subnet required"
     UDP broadcast does not cross router boundaries. Your machine and your lamps must be on the same Layer-2 segment. If you use VLANs or a guest Wi-Fi network, discovery will not find lamps on the other segment.
