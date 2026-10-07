@@ -64,7 +64,7 @@ python -m dlightclient.cli --help
   - In other modules, loggers are typically initialized as `_LOGGER = logging.getLogger(__name__)`.
 - **Protocol Details:**
   - **TCP:** Commands are JSON. Responses are `[4-byte Length][JSON Payload]`.
-  - **UDP Discovery:** Send a broadcast hex payload `476f6f676c654e50455f457269635f5761796e65` to port 9478 and listen for JSON responses on 9487.
+  - **UDP Discovery:** Send the literal ASCII text `476f6f676c654e50455f457269635f5761796e65` (not hex-decoded) as a broadcast to port 9478 and listen for JSON responses on 9487.
 - **Coding Style:**
   - Strictly follows PEP 8.
   - Comprehensive type hinting is expected for all new functions and methods.

@@ -118,7 +118,7 @@ The device exposes two proprietary protocols, both LAN-local and unauthenticated
 
 ### Discovery channel — UDP broadcast
 
-`discover_devices()` opens two datagram endpoints: a listener on local port **9487** and a sender that broadcasts a **fixed magic probe payload** (a constant hex string the firmware pattern-matches) to port **9478** at `255.255.255.255`. Devices reply with a single JSON datagram of identity metadata (`deviceId`, `deviceModel`, versions); the library stamps each with its source `ip_address`, deduplicates by IP, and returns the batch after a fixed listening window (default 3 s). Discovery is best-effort and fully decoupled from the TCP stack — its results are plain dicts the caller feeds into `DLightDevice(ip, device_id, client)`.
+`discover_devices()` opens two datagram endpoints: a listener on local port **9487** and a sender that broadcasts a **fixed magic probe payload** (a constant 40-character hex-looking string, sent as literal ASCII text; the firmware ignores the decoded bytes) to port **9478** at `255.255.255.255`. Devices reply with a single JSON datagram of identity metadata (`deviceId`, `deviceModel`, versions); the library stamps each with its source `ip_address`, deduplicates by IP, and returns the batch after a fixed listening window (default 3 s). Discovery is best-effort and fully decoupled from the TCP stack — its results are plain dicts the caller feeds into `DLightDevice(ip, device_id, client)`.
 
 ### Provisioning path
 

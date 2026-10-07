@@ -11,6 +11,28 @@ your machine  →  broadcast UDP:9478  →  [all devices]
 your machine  ←  UDP:9487            ←  [each dLight lamp]
 ```
 
+### On the wire
+
+From the lamp's side, the exchange is one datagram each way:
+
+1. **Probe:** the lamp listens on UDP **9478**. The probe is the 40-character ASCII text `476f6f676c654e50455f457269635f5761796e65`, sent as-is. It looks like hex (it spells `GoogleNPE_Eric_Wayne`), but the lamp matches the text literally and silently ignores the decoded bytes.
+2. **Reply:** the lamp sends one JSON datagram to UDP **9487** on the prober's address, from an ephemeral source port. It does not reply to the probe's source port.
+
+```json
+{"deviceId":"DL12345a","swVersion":"3.0.4","hwVersion":"1.2","deviceModel":"GLAMP001"}
+```
+
+The lamp answers a probe sent to `255.255.255.255`, to the subnet broadcast address, or directly to its own IP, so a unicast probe works when you already know the address.
+
+To check a lamp by hand without the library:
+
+```bash
+# terminal 1: listen for the reply
+nc -ul 9487
+# terminal 2: send the probe (note: the literal text, no newline)
+printf '476f6f676c654e50455f457269635f5761796e65' | nc -u -w1 192.168.1.123 9478
+```
+
 ## Usage
 
 ```python
@@ -44,7 +66,7 @@ Each entry in the returned list is a `dict` with these keys:
 | `deviceModel` | `str` | Hardware model string. |
 | `swVersion` | `str` | Firmware version. |
 | `hwVersion` | `str` | Hardware revision. |
-| `macAddress` | `str` | MAC address. |
+| `macAddress` | `str` | MAC address. Not sent by every firmware (absent on GLAMP001 3.0.4). |
 
 Only `ip_address` and `deviceId` are required to control a lamp. The rest are useful for device management UIs.
 

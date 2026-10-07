@@ -74,12 +74,13 @@ class TestFakeDeviceUsesLibraryConstants(unittest.TestCase):
         self.assertEqual(fake_dlight_server.DISCOVERY_RESPONSE_PORT, constants.DEFAULT_UDP_RESPONSE_PORT)
 
     def test_probe_payload_matches_the_one_the_client_broadcasts(self):
-        import binascii
+        self.assertEqual(fake_dlight_server.DISCOVERY_PROBE, constants.UDP_DISCOVERY_PAYLOAD)
 
-        self.assertEqual(
-            fake_dlight_server.DISCOVERY_PROBE,
-            binascii.unhexlify(constants.UDP_DISCOVERY_PAYLOAD_HEX),
-        )
+    def test_probe_payload_is_the_literal_text_a_real_lamp_answers(self):
+        # Anchored as a byte literal, not derived from the constant: the client and
+        # this fake once hex-decoded it together and stayed green while real lamps
+        # (GLAMP001, firmware 3.0.4) ignored the decoded bytes.
+        self.assertEqual(constants.UDP_DISCOVERY_PAYLOAD, b"476f6f676c654e50455f457269635f5761796e65")
 
 
 if __name__ == "__main__":

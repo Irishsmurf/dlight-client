@@ -32,7 +32,14 @@ MAX_PAYLOAD_SIZE = 10 * 1024
 
 # UDP Discovery
 UDP_DISCOVERY_PAYLOAD_HEX = "476f6f676c654e50455f457269635f5761796e65"
-"""The hexadecimal representation of the UDP discovery probe payload."""
+"""The UDP discovery probe, as text.
+
+Although it reads as hex (it spells ``GoogleNPE_Eric_Wayne``), lamps match these
+40 ASCII characters literally; they ignore the hex-decoded bytes.
+"""
+
+UDP_DISCOVERY_PAYLOAD = UDP_DISCOVERY_PAYLOAD_HEX.encode("ascii")
+"""The exact bytes sent as the UDP discovery probe."""
 
 # Logging
 _LOGGER = logging.getLogger(__name__)

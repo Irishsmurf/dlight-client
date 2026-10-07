@@ -33,7 +33,6 @@ numbers come from the library rather than being restated here:
 
 import argparse
 import asyncio
-import binascii
 import json
 import logging
 import socket
@@ -46,7 +45,7 @@ from dlightclient.constants import (
     DEFAULT_TCP_PORT,
     DEFAULT_UDP_DISCOVERY_PORT,
     DEFAULT_UDP_RESPONSE_PORT,
-    UDP_DISCOVERY_PAYLOAD_HEX,
+    UDP_DISCOVERY_PAYLOAD,
 )
 
 # Ports and the probe payload come from the library, so this fake cannot drift
@@ -55,7 +54,7 @@ from dlightclient.constants import (
 DEFAULT_CONTROL_PORT = 3334
 DISCOVERY_PORT = DEFAULT_UDP_DISCOVERY_PORT
 DISCOVERY_RESPONSE_PORT = DEFAULT_UDP_RESPONSE_PORT
-DISCOVERY_PROBE = binascii.unhexlify(UDP_DISCOVERY_PAYLOAD_HEX)
+DISCOVERY_PROBE = UDP_DISCOVERY_PAYLOAD
 
 _LOGGER = logging.getLogger("fake_dlight")
 

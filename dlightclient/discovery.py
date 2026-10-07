@@ -2,7 +2,6 @@
 """Handles UDP discovery of dLight devices."""
 
 import asyncio
-import binascii
 import json
 import logging
 from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Tuple
@@ -11,7 +10,7 @@ from .constants import (
     BROADCAST_ADDRESS,
     DEFAULT_UDP_DISCOVERY_PORT,
     DEFAULT_UDP_RESPONSE_PORT,
-    UDP_DISCOVERY_PAYLOAD_HEX,
+    UDP_DISCOVERY_PAYLOAD,
 )
 
 # Logger specific to discovery, inheriting from the base logger if needed
@@ -158,13 +157,6 @@ async def discover_devices_stream(
     send_transport: Optional[asyncio.DatagramTransport] = None
 
     try:
-        # Decode the hex payload (synchronous)
-        try:
-            probe_payload = binascii.unhexlify(UDP_DISCOVERY_PAYLOAD_HEX)
-        except binascii.Error as e:
-            _LOGGER.error(f"Internal error: failed to decode UDP probe payload hex: {e}")
-            return
-
         # 1. Create the listening endpoint
         listen_transport, listener = await loop.create_datagram_endpoint(
             lambda: _DiscoveryProtocol(discovered_devices_set, queue=queue),
@@ -181,7 +173,7 @@ async def discover_devices_stream(
 
         # 3. Send the broadcast probe
         _LOGGER.info(f"Sending discovery probe to {broadcast_address}:{discovery_port}")
-        send_transport.sendto(probe_payload)
+        send_transport.sendto(UDP_DISCOVERY_PAYLOAD)
 
         # 4. Read from the queue until timeout is reached
         start_time = loop.time()

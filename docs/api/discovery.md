@@ -72,7 +72,7 @@ On Python 3.9, call `await stream.aclose()` in a `finally` block instead.
 
 ## Protocol note
 
-The probe is a fixed hex-encoded magic payload broadcast to `discovery_port`. Lamps that recognise it respond with a JSON datagram to `response_port`. This is a proprietary protocol; discovery does not implement mDNS or DNS-SD.
+The probe is the fixed ASCII text `476f6f676c654e50455f457269635f5761796e65` (`UDP_DISCOVERY_PAYLOAD`), broadcast to `discovery_port` as-is. It is not hex-decoded: lamps match the 40 characters literally. See [On the wire](../user-guide/discovery.md#on-the-wire). Lamps that recognise it respond with a JSON datagram to `response_port`. This is a proprietary protocol; discovery does not implement mDNS or DNS-SD.
 
 ## Examples
 
