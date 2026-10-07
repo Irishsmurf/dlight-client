@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-10-07
+
 ### Fixed
 - Discovery never found real lamps. The probe constant `476f6f676c654e50455f457269635f5761796e65` was
   hex-decoded and sent as the bytes `GoogleNPE_Eric_Wayne`, but lamps match the 40 ASCII characters
@@ -181,7 +183,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release: `AsyncDLightClient`, `discover_devices`, UDP broadcast discovery, TCP command protocol (4-byte length prefix + JSON).
 - PyPI packaging and GitHub Actions CI/CD (test matrix, trusted publishing to PyPI).
 
-[Unreleased]: https://github.com/irishsmurf/dlight-client/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/irishsmurf/dlight-client/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/irishsmurf/dlight-client/compare/v2.0.1...v2.1.0
+[2.0.1]: https://github.com/irishsmurf/dlight-client/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/irishsmurf/dlight-client/compare/v1.6.1...v2.0.0
 [1.6.1]: https://github.com/irishsmurf/dlight-client/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/irishsmurf/dlight-client/compare/v1.5.1...v1.6.0
