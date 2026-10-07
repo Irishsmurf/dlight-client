@@ -1561,7 +1561,7 @@
 </code></pre></div>
 <p>On Python 3.9, call <code>await stream.aclose()</code> in a <code>finally</code> block instead.</p>
 <h2 id="protocol-note">Protocol note<a class="headerlink" href="#protocol-note" title="Permanent link">&para;</a></h2>
-<p>The probe is a fixed hex-encoded magic payload broadcast to <code>discovery_port</code>. Lamps that recognise it respond with a JSON datagram to <code>response_port</code>. This is a proprietary protocol; discovery does not implement mDNS or DNS-SD.</p>
+<p>The probe is the fixed ASCII text <code>476f6f676c654e50455f457269635f5761796e65</code> (<code>UDP_DISCOVERY_PAYLOAD</code>), broadcast to <code>discovery_port</code> as-is. It is not hex-decoded: lamps match the 40 characters literally. See <a href="../../user-guide/discovery/#on-the-wire">On the wire</a>. Lamps that recognise it respond with a JSON datagram to <code>response_port</code>. This is a proprietary protocol; discovery does not implement mDNS or DNS-SD.</p>
 <h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
 <h3 id="using-discover_devices-waits-for-full-duration">Using <code>discover_devices</code> (waits for full duration)<a class="headerlink" href="#using-discover_devices-waits-for-full-duration" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>

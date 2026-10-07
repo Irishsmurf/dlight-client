@@ -628,6 +628,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="How it works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#on-the-wire" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On the wire
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1288,6 +1305,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="How it works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#on-the-wire" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On the wire
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1388,15 +1422,30 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>your machine  →  broadcast UDP:9478  →  [all devices]
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>your machine  ←  UDP:9487            ←  [each dLight lamp]
 </code></pre></div>
+<h3 id="on-the-wire">On the wire<a class="headerlink" href="#on-the-wire" title="Permanent link">&para;</a></h3>
+<p>From the lamp's side, the exchange is one datagram each way:</p>
+<ol>
+<li><strong>Probe:</strong> the lamp listens on UDP <strong>9478</strong>. The probe is the 40-character ASCII text <code>476f6f676c654e50455f457269635f5761796e65</code>, sent as-is. It looks like hex (it spells <code>GoogleNPE_Eric_Wayne</code>), but the lamp matches the text literally and silently ignores the decoded bytes.</li>
+<li><strong>Reply:</strong> the lamp sends one JSON datagram to UDP <strong>9487</strong> on the prober's address, from an ephemeral source port. It does not reply to the probe's source port.</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span><span class="nt">"deviceId"</span><span class="p">:</span><span class="s2">"DL12345a"</span><span class="p">,</span><span class="nt">"swVersion"</span><span class="p">:</span><span class="s2">"3.0.4"</span><span class="p">,</span><span class="nt">"hwVersion"</span><span class="p">:</span><span class="s2">"1.2"</span><span class="p">,</span><span class="nt">"deviceModel"</span><span class="p">:</span><span class="s2">"GLAMP001"</span><span class="p">}</span>
+</code></pre></div>
+<p>The lamp answers a probe sent to <code>255.255.255.255</code>, to the subnet broadcast address, or directly to its own IP, so a unicast probe works when you already know the address.</p>
+<p>To check a lamp by hand without the library:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># terminal 1: listen for the reply</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>nc<span class="w"> </span>-ul<span class="w"> </span><span class="m">9487</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># terminal 2: send the probe (note: the literal text, no newline)</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nb">printf</span><span class="w"> </span><span class="s1">'476f6f676c654e50455f457269635f5761796e65'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>nc<span class="w"> </span>-u<span class="w"> </span>-w1<span class="w"> </span><span class="m">192</span>.168.1.123<span class="w"> </span><span class="m">9478</span>
+</code></pre></div>
 <h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">dlightclient</span><span class="w"> </span><span class="kn">import</span> <span class="n">discover_devices</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">devices</span> <span class="o">=</span> <span class="k">await</span> <span class="n">discover_devices</span><span class="p">(</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">discovery_duration</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span>      <span class="c1"># how long to listen (seconds)</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">response_port</span><span class="o">=</span><span class="mi">9487</span><span class="p">,</span>          <span class="c1"># port lamps reply to</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">discovery_port</span><span class="o">=</span><span class="mi">9478</span><span class="p">,</span>         <span class="c1"># port lamps listen on</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">broadcast_address</span><span class="o">=</span><span class="s2">"255.255.255.255"</span><span class="p">,</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">dlightclient</span><span class="w"> </span><span class="kn">import</span> <span class="n">discover_devices</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">devices</span> <span class="o">=</span> <span class="k">await</span> <span class="n">discover_devices</span><span class="p">(</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">discovery_duration</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span>      <span class="c1"># how long to listen (seconds)</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">response_port</span><span class="o">=</span><span class="mi">9487</span><span class="p">,</span>          <span class="c1"># port lamps reply to</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">discovery_port</span><span class="o">=</span><span class="mi">9478</span><span class="p">,</span>         <span class="c1"># port lamps listen on</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    <span class="n">broadcast_address</span><span class="o">=</span><span class="s2">"255.255.255.255"</span><span class="p">,</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="p">)</span>
 </code></pre></div>
 <p>All parameters are optional — the defaults work on a typical home network.</p>
 <table>
@@ -1469,31 +1518,31 @@
 <tr>
 <td><code>macAddress</code></td>
 <td><code>str</code></td>
-<td>MAC address.</td>
+<td>MAC address. Not sent by every firmware (absent on GLAMP001 3.0.4).</td>
 </tr>
 </tbody>
 </table>
 <p>Only <code>ip_address</code> and <code>deviceId</code> are required to control a lamp. The rest are useful for device management UIs.</p>
 <h2 id="example-quick-scan">Example: quick scan<a class="headerlink" href="#example-quick-scan" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">dlightclient</span><span class="w"> </span><span class="kn">import</span> <span class="n">discover_devices</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">scan</span><span class="p">():</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">found</span> <span class="o">=</span> <span class="k">await</span> <span class="n">discover_devices</span><span class="p">(</span><span class="n">discovery_duration</span><span class="o">=</span><span class="mf">5.0</span><span class="p">)</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">found</span><span class="p">:</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">"No lamps found — are they on the same subnet?"</span><span class="p">)</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>        <span class="k">return</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">found</span><span class="p">:</span>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  </span><span class="si">{</span><span class="n">d</span><span class="p">[</span><span class="s1">'deviceModel'</span><span class="p">]</span><span class="si">}</span><span class="s2"> @ </span><span class="si">{</span><span class="n">d</span><span class="p">[</span><span class="s1">'ip_address'</span><span class="p">]</span><span class="si">}</span><span class="s2">  (id=</span><span class="si">{</span><span class="n">d</span><span class="p">[</span><span class="s1">'deviceId'</span><span class="p">]</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">scan</span><span class="p">())</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">dlightclient</span><span class="w"> </span><span class="kn">import</span> <span class="n">discover_devices</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">scan</span><span class="p">():</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">found</span> <span class="o">=</span> <span class="k">await</span> <span class="n">discover_devices</span><span class="p">(</span><span class="n">discovery_duration</span><span class="o">=</span><span class="mf">5.0</span><span class="p">)</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">found</span><span class="p">:</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">"No lamps found — are they on the same subnet?"</span><span class="p">)</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>        <span class="k">return</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">found</span><span class="p">:</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  </span><span class="si">{</span><span class="n">d</span><span class="p">[</span><span class="s1">'deviceModel'</span><span class="p">]</span><span class="si">}</span><span class="s2"> @ </span><span class="si">{</span><span class="n">d</span><span class="p">[</span><span class="s1">'ip_address'</span><span class="p">]</span><span class="si">}</span><span class="s2">  (id=</span><span class="si">{</span><span class="n">d</span><span class="p">[</span><span class="s1">'deviceId'</span><span class="p">]</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">scan</span><span class="p">())</span>
 </code></pre></div>
 <h2 id="streaming-results">Streaming results<a class="headerlink" href="#streaming-results" title="Permanent link">&para;</a></h2>
 <p><code>discover_devices_stream()</code> takes the same parameters (with <code>timeout</code> in place of <code>discovery_duration</code>) and yields each lamp as soon as it replies, instead of waiting for the whole window:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">dlightclient</span><span class="w"> </span><span class="kn">import</span> <span class="n">discover_devices_stream</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="k">async</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">discover_devices_stream</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">5.0</span><span class="p">):</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Found </span><span class="si">{</span><span class="n">d</span><span class="p">[</span><span class="s1">'deviceId'</span><span class="p">]</span><span class="si">}</span><span class="s2"> @ </span><span class="si">{</span><span class="n">d</span><span class="p">[</span><span class="s1">'ip_address'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">dlightclient</span><span class="w"> </span><span class="kn">import</span> <span class="n">discover_devices_stream</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="k">async</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">discover_devices_stream</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">5.0</span><span class="p">):</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Found </span><span class="si">{</span><span class="n">d</span><span class="p">[</span><span class="s1">'deviceId'</span><span class="p">]</span><span class="si">}</span><span class="s2"> @ </span><span class="si">{</span><span class="n">d</span><span class="p">[</span><span class="s1">'ip_address'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </code></pre></div>
 <p>If you stop early (for example, <code>break</code> once you have found the lamp you want), close the generator so it releases port 9487 straight away — see <a href="../../api/discovery/#cleanup">Cleanup</a>.</p>
 <h2 id="firewall-and-permissions">Firewall and permissions<a class="headerlink" href="#firewall-and-permissions" title="Permanent link">&para;</a></h2>

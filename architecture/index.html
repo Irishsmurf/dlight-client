@@ -1568,7 +1568,7 @@
 </ul>
 <p>TLS is opt-in (<code>ssl=True</code> or custom <code>SSLContext</code>). The pool keys connections by SSL identity.</p>
 <h3 id="discovery-channel-udp-broadcast">Discovery channel — UDP broadcast<a class="headerlink" href="#discovery-channel-udp-broadcast" title="Permanent link">&para;</a></h3>
-<p><code>discover_devices()</code> opens a listener on local port <strong>9487</strong> and broadcasts a fixed magic probe to port <strong>9478</strong>. Devices reply with a JSON datagram of identity metadata. Results are deduplicated by IP and returned after a fixed window (default 3 s).</p>
+<p><code>discover_devices()</code> opens a listener on local port <strong>9487</strong> and broadcasts a fixed magic probe to port <strong>9478</strong>: the literal ASCII text <code>476f6f676c654e50455f457269635f5761796e65</code>, not its hex-decoded bytes. Devices reply with a JSON datagram of identity metadata. Results are deduplicated by IP and returned after a fixed window (default 3 s).</p>
 <h3 id="provisioning-path">Provisioning path<a class="headerlink" href="#provisioning-path" title="Permanent link">&para;</a></h3>
 <p>A factory-reset lamp runs a SoftAP at <strong>192.168.4.1</strong>. <code>connect_to_wifi()</code> targets that IP with an <code>SSID_CONNECT</code> command. Same TCP protocol, different default endpoint.</p>
 
